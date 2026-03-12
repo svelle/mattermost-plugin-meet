@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -45,23 +46,49 @@ func (p *Plugin) MattermostAuthorizationRequired(next http.Handler) http.Handler
 	})
 }
 
+// handleError logs the internal error and sends a generic 500 JSON response.
+func (p *Plugin) handleError(w http.ResponseWriter, internalErr error) {
+	p.handleErrorWithCode(w, http.StatusInternalServerError, "An internal error has occurred. Check app server logs for details.", internalErr)
+}
+
+// handleErrorWithCode logs the internal error and sends the public facing error
+// message as JSON in a response with the provided code.
+func (p *Plugin) handleErrorWithCode(w http.ResponseWriter, code int, publicErrorMsg string, internalErr error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+
+	details := ""
+	if internalErr != nil {
+		details = internalErr.Error()
+	}
+
+	p.API.LogError(fmt.Sprintf("public error message: %v; internal details: %v", publicErrorMsg, details))
+
+	responseMsg, _ := json.Marshal(struct {
+		Error string `json:"error"`
+	}{
+		Error: publicErrorMsg,
+	})
+	_, _ = w.Write(responseMsg)
+}
+
 func (p *Plugin) handleOAuthConnect(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
 	config := p.getConfiguration()
 	if err := config.IsValid(); err != nil {
-		http.Error(w, "Plugin is not configured. Please contact your system administrator.", http.StatusInternalServerError)
+		p.handleError(w, err)
 		return
 	}
 
 	state, err := generateState()
 	if err != nil {
-		http.Error(w, "Failed to generate state", http.StatusInternalServerError)
+		p.handleError(w, fmt.Errorf("failed to generate state: %w", err))
 		return
 	}
 
 	if err := p.kvstore.StoreOAuth2State(state, userID); err != nil {
-		http.Error(w, "Failed to store state", http.StatusInternalServerError)
+		p.handleError(w, fmt.Errorf("failed to store state: %w", err))
 		return
 	}
 
@@ -74,26 +101,24 @@ func (p *Plugin) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 
 	if code == "" || state == "" {
-		http.Error(w, "Missing code or state parameter", http.StatusBadRequest)
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Missing code or state parameter.", nil)
 		return
 	}
 
 	userID, err := p.kvstore.GetAndDeleteOAuth2State(state)
 	if err != nil {
-		http.Error(w, "Invalid or expired state. Please try connecting again.", http.StatusBadRequest)
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Invalid or expired state. Please try connecting again.", err)
 		return
 	}
 
 	token, err := p.exchangeCodeForToken(code)
 	if err != nil {
-		p.API.LogError("Failed to exchange code for token", "error", err.Error())
-		http.Error(w, "Failed to complete authentication. Please try again.", http.StatusInternalServerError)
+		p.handleError(w, fmt.Errorf("failed to exchange code for token: %w", err))
 		return
 	}
 
 	if err := p.kvstore.StoreOAuth2Token(userID, token); err != nil {
-		p.API.LogError("Failed to store token", "error", err.Error())
-		http.Error(w, "Failed to save authentication. Please try again.", http.StatusInternalServerError)
+		p.handleError(w, fmt.Errorf("failed to store token: %w", err))
 		return
 	}
 
@@ -142,10 +167,8 @@ func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
 
 func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
-	p.API.LogDebug("handleCreateMeeting called", "user_id", userID)
 
 	if !p.IsPluginConfigured() {
-		p.API.LogDebug("Plugin not configured")
 		isAdmin, _ := p.IsUserAdmin(userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -164,34 +187,22 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 
 	var req createMeetingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		resp := map[string]string{"error": "bad_request", "message": "Invalid request body"}
-		json.NewEncoder(w).Encode(resp)
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Invalid request body.", err)
 		return
 	}
 
 	if req.ChannelID == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		resp := map[string]string{"error": "bad_request", "message": "channel_id is required"}
-		json.NewEncoder(w).Encode(resp)
+		p.handleErrorWithCode(w, http.StatusBadRequest, "channel_id is required.", nil)
 		return
 	}
 
-	p.API.LogDebug("Checking user connection status", "user_id", userID)
 	connected, err := p.IsUserConnected(userID)
 	if err != nil {
-		p.API.LogError("Failed to check connection status", "user_id", userID, "error", err.Error())
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		resp := map[string]string{"error": "meeting_failed", "message": "Failed to check connection status"}
-		json.NewEncoder(w).Encode(resp)
+		p.handleError(w, fmt.Errorf("failed to check connection status: %w", err))
 		return
 	}
 
 	if !connected {
-		p.API.LogDebug("User not connected to Google", "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]string{
@@ -204,10 +215,8 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.API.LogDebug("Starting meeting", "user_id", userID, "channel_id", req.ChannelID, "topic", req.Topic)
 	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
 		if errors.Is(err, ErrNeedsReconnect) {
-			p.API.LogWarn("User needs to reconnect Google account (scope change)", "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			resp := map[string]string{
@@ -219,16 +228,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		p.API.LogError("Failed to create meeting", "user_id", userID, "channel_id", req.ChannelID, "error", err.Error())
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		resp := map[string]string{
-			"error":   "meeting_failed",
-			"message": "Failed to create meeting. Please try again or check the server logs.",
-		}
-		if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
-			p.API.LogError("Failed to encode response", "error", encErr.Error())
-		}
+		p.handleError(w, fmt.Errorf("failed to create meeting: %w", err))
 		return
 	}
 

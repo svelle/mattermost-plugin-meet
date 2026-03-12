@@ -1,6 +1,12 @@
 package kvstore
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrStateNotFound is returned when an OAuth state is not found or expired.
+var ErrStateNotFound = errors.New("OAuth state not found or expired")
 
 // OAuth2Token represents an OAuth2 token.
 type OAuth2Token struct {

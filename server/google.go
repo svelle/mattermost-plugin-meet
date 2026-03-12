@@ -17,13 +17,16 @@ import (
 var ErrInsufficientScopes = errors.New("insufficient authentication scopes")
 
 const (
-	googleAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
-	googleTokenURL = "https://oauth2.googleapis.com/token"
-	googleMeetURL  = "https://meet.googleapis.com/v2"
-	meetScope      = "https://www.googleapis.com/auth/meetings.space.created"
+	googleAuthURL = "https://accounts.google.com/o/oauth2/v2/auth"
+	meetScope     = "https://www.googleapis.com/auth/meetings.space.created"
 )
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+// These are vars so tests can override them with httptest servers.
+var (
+	googleTokenURL = "https://oauth2.googleapis.com/token"
+	googleMeetURL  = "https://meet.googleapis.com/v2"
+	httpClient     = &http.Client{Timeout: 30 * time.Second}
+)
 
 func (p *Plugin) getOAuth2ConnectURL() string {
 	siteURL := *p.API.GetConfig().ServiceSettings.SiteURL
