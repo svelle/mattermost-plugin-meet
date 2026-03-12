@@ -38,7 +38,7 @@ func TestEncryptDecrypt_EmptyData(t *testing.T) {
 
 	decrypted, err := decrypt(encrypted, key)
 	require.NoError(t, err)
-	assert.Equal(t, []byte{}, decrypted)
+	assert.Empty(t, decrypted)
 }
 
 func TestEncrypt_ProducesDifferentCiphertext(t *testing.T) {

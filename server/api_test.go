@@ -40,7 +40,7 @@ func (m *mockPluginAPI) LogDebug(msg string, keyValuePairs ...any)  {}
 func (m *mockPluginAPI) LogInfo(msg string, keyValuePairs ...any)   {}
 func (m *mockPluginAPI) LogWarn(msg string, keyValuePairs ...any)   {}
 func (m *mockPluginAPI) LogError(msg string, keyValuePairs ...any)  { m.logged = append(m.logged, msg) }
-func (m *mockPluginAPI) LoadPluginConfiguration(_ any) *model.AppError {
+func (m *mockPluginAPI) LoadPluginConfiguration(_ any) error {
 	return nil
 }
 
