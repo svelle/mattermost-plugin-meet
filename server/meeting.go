@@ -47,14 +47,6 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		Props: model.StringInterface{
 			"meeting_link":  meetURL,
 			"meeting_topic": topic,
-			"attachments": []*model.SlackAttachment{
-				{
-					Fallback: fmt.Sprintf("Google Meet: %s", meetURL),
-					Title:    "Google Meet",
-					Text:     fmt.Sprintf("Meeting URL: %s\n\n[**JOIN MEETING**](%s)", meetURL, meetURL),
-					Color:    "#00832d",
-				},
-			},
 		},
 	}
 

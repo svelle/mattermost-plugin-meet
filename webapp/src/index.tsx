@@ -23,6 +23,105 @@ const GoogleMeetIcon = () => (
     </svg>
 );
 
+const VideoIcon = () => (
+    <svg
+        xmlns='http://www.w3.org/2000/svg'
+        width='12'
+        height='12'
+        viewBox='0 0 24 24'
+        fill='currentColor'
+        style={{marginRight: '6px'}}
+    >
+        <path d='M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z'/>
+    </svg>
+);
+
+interface PostTypeGoogleMeetProps {
+    post: {
+        message: string;
+        props: {
+            meeting_link?: string;
+            meeting_topic?: string;
+        };
+    };
+    theme: {
+        centerChannelBg: string;
+        centerChannelColor: string;
+        buttonBg: string;
+        buttonColor: string;
+    };
+}
+
+const PostTypeGoogleMeet = ({post, theme}: PostTypeGoogleMeetProps) => {
+    const meetingLink = post.props?.meeting_link || '';
+    const meetingTopic = post.props?.meeting_topic || '';
+
+    const style = {
+        attachment: {
+            borderLeft: '4px solid #00832d',
+            padding: '12px',
+            marginTop: '4px',
+            borderRadius: '4px',
+            background: theme.centerChannelBg,
+        },
+        title: {
+            fontWeight: 600 as const,
+            fontSize: '14px',
+            marginBottom: '8px',
+            color: theme.centerChannelColor,
+        },
+        meetingId: {
+            fontSize: '13px',
+            color: theme.centerChannelColor,
+            marginBottom: '12px',
+            opacity: 0.8,
+        },
+        button: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '6px 16px',
+            borderRadius: '4px',
+            background: theme.buttonBg,
+            color: theme.buttonColor,
+            fontWeight: 600 as const,
+            fontSize: '12px',
+            textDecoration: 'none',
+            letterSpacing: '0.5px',
+        },
+    };
+
+    return (
+        <div>
+            <p>{post.message}</p>
+            <div style={style.attachment}>
+                <div style={style.title}>{'Google Meet'}</div>
+                {meetingTopic && (
+                    <div style={style.meetingId}>{meetingTopic}</div>
+                )}
+                <div style={style.meetingId}>
+                    {'Meeting URL: '}
+                    <a
+                        href={meetingLink}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                    >
+                        {meetingLink}
+                    </a>
+                </div>
+                <a
+                    href={meetingLink}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    style={style.button}
+                >
+                    <VideoIcon/>
+                    {'JOIN MEETING'}
+                </a>
+            </div>
+        </div>
+    );
+};
+
 const getCsrfToken = (): string => {
     const match = document.cookie.match(/MMCSRF=([^;]+)/);
     return match ? match[1] : '';
@@ -57,6 +156,9 @@ export default class Plugin {
             // If we can't check, fall through and register the button anyway
             configured = true;
         }
+
+        // Register custom post type for Google Meet meeting posts
+        registry.registerPostTypeComponent('custom_google_meet', PostTypeGoogleMeet);
 
         // Hide the button entirely for non-admin users when not configured
         if (!configured && !isAdmin) {
