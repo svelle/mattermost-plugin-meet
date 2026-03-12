@@ -1,10 +1,10 @@
 {
-    "id": "com.mattermost.plugin-starter-template",
-    "name": "Plugin Starter Template",
-    "description": "This plugin serves as a starting point for writing a Mattermost plugin.",
-    "homepage_url": "https://github.com/mattermost/mattermost-plugin-starter-template",
-    "support_url": "https://github.com/mattermost/mattermost-plugin-starter-template/issues",
-    "icon_path": "assets/starter-template-icon.svg",
+    "id": "com.mattermost.google-meet",
+    "name": "Google Meet",
+    "description": "Start and join Google Meet meetings from Mattermost.",
+    "homepage_url": "https://github.com/mattermost/mattermost-plugin-meet",
+    "support_url": "https://github.com/mattermost/mattermost-plugin-meet/issues",
+    "icon_path": "assets/icon.svg",
     "min_server_version": "6.2.1",
     "server": {
         "executables": {
@@ -19,8 +19,30 @@
         "bundle_path": "webapp/dist/main.js"
     },
     "settings_schema": {
-        "header": "",
+        "header": "Configure the Google Meet plugin. You need to create a Google OAuth 2.0 Client ID in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Set the authorized redirect URI to `<your-mattermost-url>/plugins/com.mattermost.google-meet/api/v1/oauth/callback`.",
         "footer": "",
-        "settings": []
+        "settings": [
+            {
+                "key": "GoogleClientID",
+                "display_name": "Google OAuth Client ID",
+                "type": "text",
+                "help_text": "The Client ID from your Google OAuth 2.0 credentials.",
+                "default": ""
+            },
+            {
+                "key": "GoogleClientSecret",
+                "display_name": "Google OAuth Client Secret",
+                "type": "text",
+                "help_text": "The Client Secret from your Google OAuth 2.0 credentials.",
+                "default": ""
+            },
+            {
+                "key": "EncryptionKey",
+                "display_name": "Encryption Key",
+                "type": "generated",
+                "help_text": "A secret key used to encrypt OAuth tokens stored in the database. Regenerating this key will invalidate all existing user connections.",
+                "default": ""
+            }
+        ]
     }
 }
