@@ -94,5 +94,5 @@ func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResp
 		}
 	}
 
-	return &model.CommandResponse{}, nil
+	return &model.CommandResponse{}
 }
