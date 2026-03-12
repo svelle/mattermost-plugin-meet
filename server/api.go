@@ -161,18 +161,28 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 
 	var req createMeetingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		resp := map[string]string{"error": "bad_request", "message": "Invalid request body"}
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
 	if req.ChannelID == "" {
-		http.Error(w, "channel_id is required", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		resp := map[string]string{"error": "bad_request", "message": "channel_id is required"}
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
 	connected, err := p.IsUserConnected(userID)
 	if err != nil {
-		http.Error(w, "Failed to check connection status", http.StatusInternalServerError)
+		p.API.LogError("Failed to check connection status", "error", err.Error())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]string{"error": "meeting_failed", "message": "Failed to check connection status"}
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
