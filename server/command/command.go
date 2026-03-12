@@ -13,6 +13,9 @@ type MeetingStarter interface {
 	StartMeeting(userID, channelID, topic string) error
 	GetConnectURL() string
 	IsUserConnected(userID string) (bool, error)
+	IsPluginConfigured() bool
+	IsUserAdmin(userID string) (bool, error)
+	GetPluginConfigureURL() string
 }
 
 type Handler struct {
@@ -64,6 +67,27 @@ func (c *Handler) Handle(args *model.CommandArgs) (*model.CommandResponse, error
 }
 
 func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResponse {
+	if !c.meetingStarter.IsPluginConfigured() {
+		isAdmin, err := c.meetingStarter.IsUserAdmin(args.UserId)
+		if err != nil {
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         "Failed to check permissions. Please try again.",
+			}
+		}
+		if isAdmin {
+			configURL := c.meetingStarter.GetPluginConfigureURL()
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         fmt.Sprintf("The Google Meet plugin is not configured. [Configure it in the System Console](%s).", configURL),
+			}
+		}
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "The Google Meet plugin is not configured. Please contact your system administrator.",
+		}
+	}
+
 	connected, err := c.meetingStarter.IsUserConnected(args.UserId)
 	if err != nil {
 		return &model.CommandResponse{

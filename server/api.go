@@ -24,6 +24,7 @@ func (p *Plugin) initRouter() *mux.Router {
 	protectedRouter.Use(p.MattermostAuthorizationRequired)
 	protectedRouter.HandleFunc("/oauth/connect", p.handleOAuthConnect).Methods(http.MethodGet)
 	protectedRouter.HandleFunc("/meeting", p.handleCreateMeeting).Methods(http.MethodPost)
+	protectedRouter.HandleFunc("/config/status", p.handleConfigStatus).Methods(http.MethodGet)
 
 	return router
 }
@@ -119,12 +120,43 @@ type createMeetingRequest struct {
 	Topic     string `json:"topic"`
 }
 
+func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("Mattermost-User-ID")
+
+	isAdmin, _ := p.IsUserAdmin(userID)
+	configured := p.IsPluginConfigured()
+
+	resp := map[string]interface{}{
+		"configured": configured,
+		"is_admin":   isAdmin,
+	}
+	if isAdmin && !configured {
+		resp["configure_url"] = p.GetPluginConfigureURL()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		p.API.LogError("Failed to encode response", "error", err.Error())
+	}
+}
+
 func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
-	config := p.getConfiguration()
-	if err := config.IsValid(); err != nil {
-		http.Error(w, "Plugin is not configured", http.StatusInternalServerError)
+	if !p.IsPluginConfigured() {
+		isAdmin, _ := p.IsUserAdmin(userID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]interface{}{
+			"error":    "not_configured",
+			"is_admin": isAdmin,
+		}
+		if isAdmin {
+			resp["configure_url"] = p.GetPluginConfigureURL()
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			p.API.LogError("Failed to encode response", "error", err.Error())
+		}
 		return
 	}
 

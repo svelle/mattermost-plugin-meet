@@ -12,6 +12,9 @@ type MeetingStarter interface {
 	StartMeeting(userID, channelID, topic string) error
 	GetConnectURL() string
 	IsUserConnected(userID string) (bool, error)
+	IsPluginConfigured() bool
+	IsUserAdmin(userID string) (bool, error)
+	GetPluginConfigureURL() string
 }
 
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
@@ -80,4 +83,21 @@ func (p *Plugin) IsUserConnected(userID string) (bool, error) {
 		return false, err
 	}
 	return token != nil, nil
+}
+
+func (p *Plugin) IsPluginConfigured() bool {
+	return p.getConfiguration().IsValid() == nil
+}
+
+func (p *Plugin) IsUserAdmin(userID string) (bool, error) {
+	user, appErr := p.API.GetUser(userID)
+	if appErr != nil {
+		return false, errors.Wrap(appErr, "failed to get user")
+	}
+	return user.IsSystemAdmin(), nil
+}
+
+func (p *Plugin) GetPluginConfigureURL() string {
+	siteURL := *p.API.GetConfig().ServiceSettings.SiteURL
+	return fmt.Sprintf("%s/admin_console/plugins/plugin_%s", siteURL, manifest.Id)
 }

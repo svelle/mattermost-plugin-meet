@@ -1,6 +1,6 @@
 module github.com/mattermost/mattermost-plugin-meet
 
-go 1.24.7
+go 1.25
 
 require (
 	github.com/google/uuid v1.6.0
@@ -60,5 +60,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/mattermost/mattermost/server/v8 => ./server-v8-stub

@@ -20,6 +20,26 @@ const GoogleMeetIcon = () => (
 export default class Plugin {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public async initialize(registry: PluginRegistry, store: Store<GlobalState>) {
+        // Check if the plugin is configured and whether the user is an admin
+        let configured = false;
+        let isAdmin = false;
+        try {
+            const statusResp = await fetch(`/plugins/${manifest.id}/api/v1/config/status`);
+            if (statusResp.ok) {
+                const status = await statusResp.json();
+                configured = status.configured;
+                isAdmin = status.is_admin;
+            }
+        } catch {
+            // If we can't check, fall through and register the button anyway
+            configured = true;
+        }
+
+        // Hide the button entirely for non-admin users when not configured
+        if (!configured && !isAdmin) {
+            return;
+        }
+
         registry.registerChannelHeaderButtonAction(
             <GoogleMeetIcon/>,
             async (channel: {id: string}) => {
@@ -37,6 +57,12 @@ export default class Plugin {
                 }
 
                 const data = await resp.json();
+                if (data.error === 'not_configured') {
+                    if (data.configure_url) {
+                        window.open(data.configure_url, '_blank');
+                    }
+                    return;
+                }
                 if (data.error === 'not_connected') {
                     window.open(data.connect_url, '_blank');
                 }
