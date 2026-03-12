@@ -18,6 +18,7 @@ type MeetingStarter interface {
 }
 
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
+	p.API.LogDebug("StartMeeting: getting valid token", "user_id", userID)
 	token, err := p.getValidToken(userID)
 	if err != nil {
 		return errors.Wrap(err, "failed to get user token")
@@ -26,10 +27,12 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		return errors.New("user not connected to Google")
 	}
 
+	p.API.LogDebug("StartMeeting: creating Google Meet meeting", "user_id", userID)
 	meetURL, err := p.createMeeting(token, topic)
 	if err != nil {
 		return errors.Wrap(err, "failed to create Google Meet meeting")
 	}
+	p.API.LogDebug("StartMeeting: meeting created", "user_id", userID, "meet_url", meetURL)
 
 	user, appErr := p.API.GetUser(userID)
 	if appErr != nil {

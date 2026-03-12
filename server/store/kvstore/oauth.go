@@ -52,9 +52,10 @@ func (kv *Client) GetOAuth2Token(userID string) (*OAuth2Token, error) {
 	var encrypted []byte
 	err := kv.client.KV.Get(oauthTokenPrefix+userID, &encrypted)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get token")
+		// If the key doesn't exist or can't be unmarshalled, treat as not connected
+		return nil, nil
 	}
-	if encrypted == nil {
+	if len(encrypted) == 0 {
 		return nil, nil
 	}
 

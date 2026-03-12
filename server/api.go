@@ -141,8 +141,10 @@ func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
 
 func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
+	p.API.LogDebug("handleCreateMeeting called", "user_id", userID)
 
 	if !p.IsPluginConfigured() {
+		p.API.LogDebug("Plugin not configured")
 		isAdmin, _ := p.IsUserAdmin(userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -176,9 +178,10 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p.API.LogDebug("Checking user connection status", "user_id", userID)
 	connected, err := p.IsUserConnected(userID)
 	if err != nil {
-		p.API.LogError("Failed to check connection status", "error", err.Error())
+		p.API.LogError("Failed to check connection status", "user_id", userID, "error", err.Error())
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]string{"error": "meeting_failed", "message": "Failed to check connection status"}
@@ -187,6 +190,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !connected {
+		p.API.LogDebug("User not connected to Google", "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]string{
@@ -199,8 +203,9 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p.API.LogDebug("Starting meeting", "user_id", userID, "channel_id", req.ChannelID, "topic", req.Topic)
 	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
-		p.API.LogError("Failed to create meeting", "error", err.Error())
+		p.API.LogError("Failed to create meeting", "user_id", userID, "channel_id", req.ChannelID, "error", err.Error())
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]string{
