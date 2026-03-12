@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -8,35 +9,44 @@ import (
 	"github.com/mattermost/mattermost/server/public/pluginapi"
 )
 
+// MeetingStarter is the interface the command handler uses to start meetings.
+type MeetingStarter interface {
+	StartMeeting(userID, channelID, topic string) error
+	GetConnectURL() string
+	IsUserConnected(userID string) (bool, error)
+	IsPluginConfigured() bool
+	IsUserAdmin(userID string) (bool, error)
+	GetPluginConfigureURL() string
+}
+
 type Handler struct {
-	client *pluginapi.Client
+	client         *pluginapi.Client
+	meetingStarter MeetingStarter
 }
 
 type Command interface {
 	Handle(args *model.CommandArgs) (*model.CommandResponse, error)
-	executeHelloCommand(args *model.CommandArgs) *model.CommandResponse
 }
 
-const helloCommandTrigger = "hello"
+const meetCommandTrigger = "meet"
 
-// Register all your slash commands in the NewCommandHandler function.
-func NewCommandHandler(client *pluginapi.Client) Command {
+func NewCommandHandler(client *pluginapi.Client, meetingStarter MeetingStarter) Command {
 	err := client.SlashCommand.Register(&model.Command{
-		Trigger:          helloCommandTrigger,
+		Trigger:          meetCommandTrigger,
 		AutoComplete:     true,
-		AutoCompleteDesc: "Say hello to someone",
-		AutoCompleteHint: "[@username]",
-		AutocompleteData: model.NewAutocompleteData(helloCommandTrigger, "[@username]", "Username to say hello to"),
+		AutoCompleteDesc: "Start a Google Meet meeting",
+		AutoCompleteHint: "[topic]",
+		AutocompleteData: model.NewAutocompleteData(meetCommandTrigger, "[topic]", "Start a Google Meet meeting with an optional topic"),
 	})
 	if err != nil {
 		client.Log.Error("Failed to register command", "error", err)
 	}
 	return &Handler{
-		client: client,
+		client:         client,
+		meetingStarter: meetingStarter,
 	}
 }
 
-// ExecuteCommand hook calls this method to execute the commands that were registered in the NewCommandHandler function.
 func (c *Handler) Handle(args *model.CommandArgs) (*model.CommandResponse, error) {
 	fields := strings.Fields(args.Command)
 	if len(fields) == 0 {
@@ -47,8 +57,8 @@ func (c *Handler) Handle(args *model.CommandArgs) (*model.CommandResponse, error
 	}
 	trigger := strings.TrimPrefix(fields[0], "/")
 	switch trigger {
-	case helloCommandTrigger:
-		return c.executeHelloCommand(args), nil
+	case meetCommandTrigger:
+		return c.executeMeetCommand(args), nil
 	default:
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
@@ -57,15 +67,74 @@ func (c *Handler) Handle(args *model.CommandArgs) (*model.CommandResponse, error
 	}
 }
 
-func (c *Handler) executeHelloCommand(args *model.CommandArgs) *model.CommandResponse {
-	if len(strings.Fields(args.Command)) < 2 {
+func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResponse {
+	if !c.meetingStarter.IsPluginConfigured() {
+		isAdmin, err := c.meetingStarter.IsUserAdmin(args.UserId)
+		if err != nil {
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         "Failed to check permissions. Please try again.",
+			}
+		}
+		if isAdmin {
+			configURL := c.meetingStarter.GetPluginConfigureURL()
+			if configURL == "" {
+				return &model.CommandResponse{
+					ResponseType: model.CommandResponseTypeEphemeral,
+					Text:         "The Google Meet plugin is not configured. Mattermost Site URL must be configured before the System Console link is available.",
+				}
+			}
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         fmt.Sprintf("The Google Meet plugin is not configured. [Configure it in the System Console](%s).", configURL),
+			}
+		}
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         "Please specify a username",
+			Text:         "The Google Meet plugin is not configured. Please contact your system administrator.",
 		}
 	}
-	username := strings.Fields(args.Command)[1]
-	return &model.CommandResponse{
-		Text: "Hello, " + username,
+
+	connected, err := c.meetingStarter.IsUserConnected(args.UserId)
+	if err != nil {
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "Failed to check Google connection status. Please try again.",
+		}
 	}
+
+	if !connected {
+		connectURL := c.meetingStarter.GetConnectURL()
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         fmt.Sprintf("You need to connect your Google account first. [Click here to connect](%s).", connectURL),
+		}
+	}
+
+	// Extract topic from command arguments
+	topic := ""
+	fields := strings.Fields(args.Command)
+	if len(fields) > 1 {
+		topic = strings.Join(fields[1:], " ")
+	}
+
+	if err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
+		if errors.Is(err, ErrNeedsReconnect) {
+			connectURL := c.meetingStarter.GetConnectURL()
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL),
+			}
+		}
+		// NewCommandHandler always sets c.client, but tests may construct Handler directly.
+		if c.client != nil {
+			c.client.Log.Error("Failed to create meeting", "user_id", args.UserId, "error", err.Error())
+		}
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "Failed to create meeting. Please try again or check the server logs.",
+		}
+	}
+
+	return &model.CommandResponse{}
 }
