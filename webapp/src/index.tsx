@@ -23,12 +23,17 @@ const GoogleMeetIcon = () => (
     </svg>
 );
 
+const getCsrfToken = (): string => {
+    const match = document.cookie.match(/MMCSRF=([^;]+)/);
+    return match ? match[1] : '';
+};
+
 const doFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
     return fetch(url, {
         credentials: 'include',
         headers: {
             'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': getCsrfToken(),
             ...options.headers,
         },
         ...options,
