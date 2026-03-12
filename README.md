@@ -1,223 +1,196 @@
-# Plugin Starter Template
+# Mattermost Google Meet Plugin
 
-[![Build Status](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/ci.yml/badge.svg)](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/ci.yml)
-[![E2E Status](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/e2e.yml/badge.svg)](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/e2e.yml)
+Start and join Google Meet meetings from Mattermost.
 
-This plugin serves as a starting point for writing a Mattermost plugin. Feel free to base your own plugin off this repository.
+This plugin adds a `/meet` slash command and a channel header button that let users create a Google Meet link from within Mattermost. Meetings are created using the Google account that each user connects through OAuth.
 
-To learn more about plugins, see [our plugin documentation](https://developers.mattermost.com/extend/plugins/).
+## Features
 
-This template requires node v16 and npm v8. You can download and install nvm to manage your node versions by following the instructions [here](https://github.com/nvm-sh/nvm). Once you've setup the project simply run `nvm i` within the root folder to use the suggested version of node.
+- Start a Google Meet meeting with `/meet` or the channel header button.
+- Create meetings as the currently connected Google user.
+- Post a rich Mattermost message with a join link back into the channel.
+- Prompt users to connect or reconnect their Google account when OAuth is missing or stale.
+- Hide the meeting button for non-admin users until the plugin is fully configured.
 
-## Getting Started
-Use GitHub's template feature to make a copy of this repository by clicking the "Use this template" button.
+## User Experience
 
-Alternatively shallow clone the repository matching your plugin name:
-```
-git clone --depth 1 https://github.com/mattermost/mattermost-plugin-starter-template com.example.my-plugin
-```
+After the plugin is configured by a Mattermost administrator:
 
-Note that this project uses [Go modules](https://github.com/golang/go/wiki/Modules). Be sure to locate the project outside of `$GOPATH`.
+1. A user runs `/meet` or clicks the Google Meet channel header button.
+2. If the user has not connected Google yet, the plugin returns a connect link.
+3. Once connected, the plugin creates a Meet link and posts it into the current channel.
+4. `/meet` optionally accepts a topic, for example:
 
-Edit the following files:
-1. `plugin.json` with your `id`, `name`, and `description`:
-```json
-{
-    "id": "com.example.my-plugin",
-    "name": "My Plugin",
-    "description": "A plugin to enhance Mattermost."
-}
+```text
+/meet Sprint planning
 ```
 
-2. `go.mod` with your Go module path, following the `<hosting-site>/<repository>/<module>` convention:
-```
-module github.com/example/my-plugin
-```
+The created post includes the meeting URL and an obvious join action in the Mattermost UI.
 
-3. Replace all occurrences of `github.com/mattermost/mattermost-plugin-starter-template` in the codebase with your Go module path:
+## Admin Setup
+
+The plugin depends on Mattermost having a public `SiteURL` and on Google OAuth credentials for the Google Meet REST API.
+
+### 1. Install and enable the plugin
+
+Build the bundle locally:
+
 ```bash
-sed -i '' 's|github.com/mattermost/mattermost-plugin-starter-template|github.com/example/my-plugin|g' server/*.go
+make dist
 ```
 
-4. Replace `.golangci.yml` `local-prefixes` attribute with your Go module path:
-```yml
-linters-settings:
-  # [...]
-  goimports:
-    local-prefixes: github.com/example/my-plugin
+This produces a plugin archive under `dist/`, typically:
+
+```text
+dist/com.mattermost.google-meet-<version>.tar.gz
 ```
 
-5. Build your plugin:
-```
-make
-```
+Upload that archive in the Mattermost System Console and enable the plugin.
 
-This will produce a single plugin file (with support for multiple architectures) for upload to your Mattermost server:
+### 2. Ensure Mattermost Site URL is configured
 
-```
-dist/com.example.my-plugin.tar.gz
-```
+Set `SiteURL` in Mattermost before configuring OAuth. The plugin uses it to build:
+
+- the Google OAuth callback URL
+- the Google connect URL
+- the System Console configuration link shown to admins
+
+If `SiteURL` is missing, the plugin intentionally reports itself as not fully configured.
+
+### 3. Configure Google Cloud
+
+In Google Cloud:
+
+1. Enable the [Google Meet REST API](https://console.cloud.google.com/apis/library/meet.googleapis.com).
+2. Create an OAuth 2.0 Client ID of type `Web application`.
+3. Add the redirect URI shown in the plugin configuration page once the plugin is active.
+
+The plugin displays the expected redirect URI in the System Console plugin settings header after activation.
+
+### 4. Fill in plugin settings
+
+In the Mattermost System Console, configure:
+
+- `Google OAuth Client ID`: the Google OAuth client ID.
+- `Google OAuth Client Secret`: the Google OAuth client secret.
+- `Encryption Key`: the generated secret used to encrypt OAuth tokens at rest in Mattermost's KV store.
+
+Important notes:
+
+- Rotating the `Encryption Key` invalidates existing stored Google connections.
+- If Google scopes change or a token becomes unusable, the plugin asks the user to reconnect.
+
+## Configuration Reference
+
+### `GoogleClientID`
+
+OAuth client ID used when sending users to Google for authorization.
+
+### `GoogleClientSecret`
+
+OAuth client secret used during token exchange and refresh. This field is marked secret in the plugin manifest and is masked in the System Console.
+
+### `EncryptionKey`
+
+Generated secret used to encrypt OAuth tokens before storing them in Mattermost. The plugin will not enable OAuth token operations until this is configured.
 
 ## Development
 
-To avoid having to manually install your plugin, build and deploy your plugin using one of the following options. In order for the below options to work, you must first enable plugin uploads via your config.json or API and restart Mattermost.
+### Requirements
 
-```json
-    "PluginSettings" : {
-        ...
-        "EnableUploads" : true
-    }
-```
+- Go `1.25`
+- Node.js `24.13.1` from `.nvmrc`
+- npm compatible with that Node version
 
-### Development guidance
+Use the repo's Node version with:
 
-1. Fewer packages is better: default to the main package unless there's good reason for a new package.
-
-2. Coupling implies same package: don't jump through hoops to break apart code that's naturally coupled.
-
-3. New package for a new interface: a classic example is the sqlstore with layers for monitoring performance, caching and mocking.
-
-4. New package for upstream integration: a discrete client package for interfacing with a 3rd party is often a great place to break out into a new package
-
-### Modifying the server boilerplate
-
-The server code comes with some boilerplate for creating an api, using slash commands, accessing the kvstore and using the cluster package for jobs.
-
-#### Api
-
-api.go implements the ServeHTTP hook which allows the plugin to implement the http.Handler interface. Requests destined for the `/plugins/{id}` path will be routed to the plugin. This file also contains a sample `HelloWorld` endpoint that is tested in plugin_test.go.
-
-#### Command package
-
-This package contains the boilerplate for adding a slash command and an instance of it is created in the `OnActivate` hook in plugin.go. If you don't need it you can delete the package and remove any reference to `commandClient` in plugin.go. The package also contains an example of how to create a mock for testing.
-
-#### KVStore package
-
-This is a central place for you to access the KVStore methods that are available in the `pluginapi.Client`. The package contains an interface for you to define your methods that will wrap the KVStore methods. An instance of the KVStore is created in the `OnActivate` hook.
-
-### Deploying with Local Mode
-
-If your Mattermost server is running locally, you can enable [local mode](https://docs.mattermost.com/administration/mmctl-cli-tool.html#local-mode) to streamline deploying your plugin. Edit your server configuration as follows:
-
-```json
-{
-    "ServiceSettings": {
-        ...
-        "EnableLocalMode": true,
-        "LocalModeSocketLocation": "/var/tmp/mattermost_local.socket"
-    },
-}
-```
-
-and then deploy your plugin:
-```
-make deploy
-```
-
-You may also customize the Unix socket path:
 ```bash
-export MM_LOCALSOCKETPATH=/var/tmp/alternate_local.socket
-make deploy
+nvm use
 ```
 
-If developing a plugin with a webapp, watch for changes and deploy those automatically:
+Install webapp dependencies:
+
+```bash
+cd webapp && npm install
+```
+
+### Common commands
+
+- `make test`: run server and webapp unit tests
+- `make check-style`: run eslint, type checking, `go vet`, and `golangci-lint`
+- `make dist`: build and bundle the plugin
+- `make deploy`: build and deploy the plugin to a Mattermost server
+- `make watch`: watch and rebuild webapp assets for development
+
+### Local deployment
+
+If Mattermost local mode is enabled, `make deploy` can deploy directly to your local server.
+
+You can also deploy with API credentials or a personal access token, for example:
+
 ```bash
 export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
-export MM_ADMIN_TOKEN=j44acwd8obn78cdcx7koid4jkr
+export MM_ADMIN_TOKEN=YOUR_TOKEN
+make deploy
+```
+
+For watch mode:
+
+```bash
+export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
+export MM_ADMIN_TOKEN=YOUR_TOKEN
 make watch
 ```
 
-### Deploying with credentials
+If `MM_SERVICESETTINGS_ENABLEDEVELOPER` is set, the server build is limited to the current platform architecture to speed up local iteration.
 
-Alternatively, you can authenticate with the server's API with credentials:
+## Testing
+
+Run the full validation suite:
+
 ```bash
-export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
-export MM_ADMIN_USERNAME=admin
-export MM_ADMIN_PASSWORD=password
-make deploy
+make test
+make check-style
 ```
 
-or with a [personal access token](https://docs.mattermost.com/developer/personal-access-tokens.html):
-```bash
-export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
-export MM_ADMIN_TOKEN=j44acwd8obn78cdcx7koid4jkr
-make deploy
-```
+Server tests cover OAuth flow, token storage behavior, and meeting creation paths. Webapp tests cover the bundle manifest and basic React rendering.
 
-### Releasing new versions
+## Release
 
-The version of a plugin is determined at compile time, automatically populating a `version` field in the [plugin manifest](plugin.json):
-* If the current commit matches a tag, the version will match after stripping any leading `v`, e.g. `1.3.1`.
-* Otherwise, the version will combine the nearest tag with `git rev-parse --short HEAD`, e.g. `1.3.1+d06e53e1`.
-* If there is no version tag, an empty version will be combined with the short hash, e.g. `0.0.0+76081421`.
+The plugin version is derived at build time from git tags unless you explicitly maintain the manifest version yourself.
 
-To disable this behaviour, manually populate and maintain the `version` field.
+Release helpers:
 
-## How to Release
+- `make patch`
+- `make minor`
+- `make major`
+- `make patch-rc`
+- `make minor-rc`
+- `make major-rc`
 
-To trigger a release, follow these steps:
+These targets create and push signed tags, so make sure you are on the correct branch and up to date before using them.
 
-1. **For Patch Release:** Run the following command:
-    ```
-    make patch
-    ```
-   This will release a patch change.
+## Troubleshooting
 
-2. **For Minor Release:** Run the following command:
-    ```
-    make minor
-    ```
-   This will release a minor change.
+### The plugin says it is not configured
 
-3. **For Major Release:** Run the following command:
-    ```
-    make major
-    ```
-   This will release a major change.
+Check all of the following:
 
-4. **For Patch Release Candidate (RC):** Run the following command:
-    ```
-    make patch-rc
-    ```
-   This will release a patch release candidate.
+- Mattermost `SiteURL` is set
+- Google Meet REST API is enabled
+- OAuth redirect URI in Google Cloud matches the one shown by the plugin
+- `GoogleClientID`, `GoogleClientSecret`, and `EncryptionKey` are populated
 
-5. **For Minor Release Candidate (RC):** Run the following command:
-    ```
-    make minor-rc
-    ```
-   This will release a minor release candidate.
+### Users are asked to reconnect Google
 
-6. **For Major Release Candidate (RC):** Run the following command:
-    ```
-    make major-rc
-    ```
-   This will release a major release candidate.
+This usually means one of:
 
-## Q&A
+- the token no longer has the required Google Meet scope
+- the encryption key changed
+- the stored token became unreadable or expired
 
-### How do I make a server-only or web app-only plugin?
+Reconnecting refreshes the user's stored OAuth state.
 
-Simply delete the `server` or `webapp` folders and remove the corresponding sections from `plugin.json`. The build scripts will skip the missing portions automatically.
+### Users cannot start meetings in a channel
 
-### How do I include assets in the plugin bundle?
-
-Place them into the `assets` directory. To use an asset at runtime, build the path to your asset and open as a regular file:
-
-```go
-bundlePath, err := p.API.GetBundlePath()
-if err != nil {
-    return errors.Wrap(err, "failed to get bundle path")
-}
-
-profileImage, err := ioutil.ReadFile(filepath.Join(bundlePath, "assets", "profile_image.png"))
-if err != nil {
-    return errors.Wrap(err, "failed to read profile image")
-}
-
-if appErr := p.API.SetProfileImage(userID, profileImage); appErr != nil {
-    return errors.Wrap(err, "failed to set profile image")
-}
-```
-
-### How do I build the plugin with unminified JavaScript?
-Setting the `MM_DEBUG` environment variable will invoke the debug builds. The simplist way to do this is to simply include this variable in your calls to `make` (e.g. `make dist MM_DEBUG=1`).
+The plugin only posts meeting links into channels where the user has permission to create posts.
