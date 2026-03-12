@@ -34,11 +34,6 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	}
 	p.API.LogDebug("StartMeeting: meeting created", "user_id", userID, "meet_url", meetURL)
 
-	user, appErr := p.API.GetUser(userID)
-	if appErr != nil {
-		return errors.Wrap(appErr, "failed to get user")
-	}
-
 	message := "I have started a meeting"
 	if topic != "" {
 		message = fmt.Sprintf("I have started a meeting: **%s**", topic)
