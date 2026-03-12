@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/command"
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"github.com/mattermost/mattermost-plugin-meet/server/command"
 )
 
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {

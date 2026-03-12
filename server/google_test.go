@@ -31,7 +31,8 @@ func TestCreateMeeting_Success(t *testing.T) {
 			MeetingCode: "abc-defg-hij",
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		err = json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -60,7 +61,8 @@ func TestCreateMeeting_Success(t *testing.T) {
 func TestCreateMeeting_InsufficientScopes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error":{"code":403,"message":"Request had insufficient authentication scopes.","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}`))
+		_, err := w.Write([]byte(`{"error":{"code":403,"message":"Request had insufficient authentication scopes.","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -87,7 +89,8 @@ func TestCreateMeeting_InsufficientScopes(t *testing.T) {
 func TestCreateMeeting_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"internal"}`))
+		_, err := w.Write([]byte(`{"error":"internal"}`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -115,7 +118,8 @@ func TestCreateMeeting_EmptyMeetingURI(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := meetSpaceResponse{Name: "spaces/abc123"}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		err := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -142,7 +146,8 @@ func TestCreateMeeting_EmptyMeetingURI(t *testing.T) {
 func TestCreateMeeting_InvalidJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`not json`))
+		_, err := w.Write([]byte(`not json`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -182,7 +187,8 @@ func TestExchangeCodeForToken_Success(t *testing.T) {
 			RefreshToken: "refresh-456",
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		err = json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -202,7 +208,7 @@ func TestExchangeCodeForToken_Success(t *testing.T) {
 		GoogleClientSecret: "client-secret",
 		EncryptionKey:      "enc-key",
 	})
-	p.MattermostPlugin.API = &mockPluginAPI{siteURL: siteURL}
+	p.API = &mockPluginAPI{siteURL: siteURL}
 
 	token, err := p.exchangeCodeForToken("test-code")
 	require.NoError(t, err)
@@ -215,7 +221,8 @@ func TestExchangeCodeForToken_Success(t *testing.T) {
 func TestExchangeCodeForToken_ErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"invalid_grant"}`))
+		_, err := w.Write([]byte(`{"error":"invalid_grant"}`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -235,7 +242,7 @@ func TestExchangeCodeForToken_ErrorResponse(t *testing.T) {
 		GoogleClientSecret: "client-secret",
 		EncryptionKey:      "enc-key",
 	})
-	p.MattermostPlugin.API = &mockPluginAPI{siteURL: siteURL}
+	p.API = &mockPluginAPI{siteURL: siteURL}
 
 	_, err := p.exchangeCodeForToken("bad-code")
 	require.Error(t, err)
@@ -249,7 +256,7 @@ func TestExchangeCodeForToken_RequiresSiteURL(t *testing.T) {
 		GoogleClientSecret: "client-secret",
 		EncryptionKey:      "enc-key",
 	})
-	p.MattermostPlugin.API = &mockPluginAPI{}
+	p.API = &mockPluginAPI{}
 
 	_, err := p.exchangeCodeForToken("test-code")
 	require.Error(t, err)
@@ -270,7 +277,8 @@ func TestRefreshToken_KeepsExistingRefreshToken(t *testing.T) {
 			// No refresh token in response
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		encodeErr := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, encodeErr)
 	}))
 	defer server.Close()
 
@@ -312,7 +320,8 @@ func TestRefreshToken_UpdatesRefreshToken(t *testing.T) {
 			RefreshToken: "new-refresh",
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		err := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 

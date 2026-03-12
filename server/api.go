@@ -9,8 +9,9 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/mattermost/mattermost-plugin-meet/server/command"
 	"github.com/mattermost/mattermost/server/public/plugin"
+
+	"github.com/mattermost/mattermost-plugin-meet/server/command"
 )
 
 func (p *Plugin) initRouter() *mux.Router {
@@ -162,7 +163,7 @@ func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	configured := p.IsPluginConfigured()
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"configured": configured,
 		"is_admin":   isAdmin,
 	}
@@ -188,7 +189,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"error":    "not_configured",
 			"is_admin": isAdmin,
 		}

@@ -130,7 +130,7 @@ func setupPlugin(t *testing.T) (*Plugin, *mockPluginAPI, *mockKVStore) {
 	kv := newMockKVStore()
 
 	p := &Plugin{}
-	p.MattermostPlugin.API = api
+	p.API = api
 	p.kvstore = kv
 	p.setConfiguration(&configuration{
 		GoogleClientID:     "test-client-id",
@@ -174,7 +174,7 @@ func TestHandleConfigStatus(t *testing.T) {
 		p.router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		var resp map[string]interface{}
+		var resp map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		assert.Equal(t, true, resp["configured"])
@@ -191,7 +191,7 @@ func TestHandleConfigStatus(t *testing.T) {
 		p.router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		var resp map[string]interface{}
+		var resp map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		assert.Equal(t, false, resp["configured"])
@@ -211,7 +211,7 @@ func TestHandleCreateMeeting_NotConfigured(t *testing.T) {
 	p.router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "not_configured", resp["error"])
@@ -275,7 +275,8 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 			MeetingCode: "test-meet",
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		err := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
 	}))
 	defer meetServer.Close()
 
