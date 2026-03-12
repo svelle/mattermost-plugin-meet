@@ -210,7 +210,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]string{
 			"error":   "meeting_failed",
-			"message": err.Error(),
+			"message": "Failed to create meeting. Please try again or check the server logs.",
 		}
 		if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
 			p.API.LogError("Failed to encode response", "error", encErr.Error())

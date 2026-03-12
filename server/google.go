@@ -23,6 +23,8 @@ const (
 	calendarScope     = "https://www.googleapis.com/auth/calendar.events"
 )
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func (p *Plugin) getOAuth2ConnectURL() string {
 	siteURL := *p.API.GetConfig().ServiceSettings.SiteURL
 	return fmt.Sprintf("%s/plugins/%s/api/v1/oauth/connect", siteURL, manifest.Id)
@@ -67,7 +69,7 @@ func (p *Plugin) exchangeCodeForToken(code string) (*kvstore.OAuth2Token, error)
 		"grant_type":    {"authorization_code"},
 	}
 
-	resp, err := http.PostForm(googleTokenURL, data)
+	resp, err := httpClient.PostForm(googleTokenURL, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to exchange code for token")
 	}
@@ -107,7 +109,7 @@ func (p *Plugin) refreshToken(token *kvstore.OAuth2Token) (*kvstore.OAuth2Token,
 		"grant_type":    {"refresh_token"},
 	}
 
-	resp, err := http.PostForm(googleTokenURL, data)
+	resp, err := httpClient.PostForm(googleTokenURL, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to refresh token")
 	}
@@ -243,7 +245,7 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, topic string) (string
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create calendar event")
 	}

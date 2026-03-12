@@ -18,6 +18,10 @@ type MeetingStarter interface {
 }
 
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
+	if !p.API.HasPermissionToChannel(userID, channelID, model.PermissionCreatePost) {
+		return errors.New("you don't have permission to create posts in this channel")
+	}
+
 	p.API.LogDebug("StartMeeting: getting valid token", "user_id", userID)
 	token, err := p.getValidToken(userID)
 	if err != nil {

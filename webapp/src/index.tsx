@@ -128,14 +128,15 @@ const getCsrfToken = (): string => {
 };
 
 const doFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const {headers: optHeaders, ...restOptions} = options;
     return fetch(url, {
         credentials: 'include',
+        ...restOptions,
         headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': getCsrfToken(),
-            ...options.headers,
+            ...(optHeaders || {}),
         },
-        ...options,
     });
 };
 
@@ -187,17 +188,14 @@ export default class Plugin {
                     return;
                 }
                 if (data.error === 'meeting_failed') {
-                    store.dispatch({
-                        type: 'RECEIVED_WEBAPP_PLUGIN',
-                    });
-
                     // Post ephemeral-style error via the store
                     const currentUserId = store.getState().entities.users.currentUserId;
                     const timestamp = Date.now();
+                    const randomSuffix = Math.random().toString(36).substring(2, 8);
                     store.dispatch({
                         type: 'RECEIVED_NEW_POST',
                         data: {
-                            id: `meet_error_${timestamp}`,
+                            id: `meet_error_${timestamp}_${randomSuffix}`,
                             create_at: timestamp,
                             update_at: timestamp,
                             delete_at: 0,
