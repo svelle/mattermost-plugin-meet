@@ -1,24 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/mattermost/mattermost/server/public/model"
-	"github.com/pkg/errors"
 )
 
 // ErrNeedsReconnect indicates the user must re-connect their Google account.
 var ErrNeedsReconnect = errors.New("needs_reconnect")
-
-// MeetingStarter is used by the command handler to start meetings.
-type MeetingStarter interface {
-	StartMeeting(userID, channelID, topic string) error
-	GetConnectURL() string
-	IsUserConnected(userID string) (bool, error)
-	IsPluginConfigured() bool
-	IsUserAdmin(userID string) (bool, error)
-	GetPluginConfigureURL() string
-}
 
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	if !p.API.HasPermissionToChannel(userID, channelID, model.PermissionCreatePost) {
@@ -28,7 +18,7 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	p.API.LogDebug("StartMeeting: getting valid token", "user_id", userID)
 	token, err := p.getValidToken(userID)
 	if err != nil {
-		return errors.Wrap(err, "failed to get user token")
+		return fmt.Errorf("failed to get user token: %w", err)
 	}
 	if token == nil {
 		return errors.New("user not connected to Google")
@@ -42,7 +32,7 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 			_ = p.kvstore.DeleteOAuth2Token(userID)
 			return ErrNeedsReconnect
 		}
-		return errors.Wrap(err, "failed to create Google Meet meeting")
+		return fmt.Errorf("failed to create Google Meet meeting: %w", err)
 	}
 	p.API.LogDebug("StartMeeting: meeting created", "user_id", userID, "meet_url", meetURL)
 
@@ -64,7 +54,7 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 
 	_, appErr := p.API.CreatePost(post)
 	if appErr != nil {
-		return errors.Wrap(appErr, "failed to create post")
+		return fmt.Errorf("failed to create post: %w", appErr)
 	}
 
 	return nil
@@ -89,7 +79,7 @@ func (p *Plugin) IsPluginConfigured() bool {
 func (p *Plugin) IsUserAdmin(userID string) (bool, error) {
 	user, appErr := p.API.GetUser(userID)
 	if appErr != nil {
-		return false, errors.Wrap(appErr, "failed to get user")
+		return false, fmt.Errorf("failed to get user: %w", appErr)
 	}
 	return user.IsSystemAdmin(), nil
 }

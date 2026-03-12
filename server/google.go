@@ -2,14 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 
 	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
 )
@@ -72,13 +71,13 @@ func (p *Plugin) exchangeCodeForToken(code string) (*kvstore.OAuth2Token, error)
 
 	resp, err := httpClient.PostForm(googleTokenURL, data)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to exchange code for token")
+		return nil, fmt.Errorf("failed to exchange code for token: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read token response")
+		return nil, fmt.Errorf("failed to read token response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -87,7 +86,7 @@ func (p *Plugin) exchangeCodeForToken(code string) (*kvstore.OAuth2Token, error)
 
 	var tokenResp tokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return nil, errors.Wrap(err, "failed to parse token response")
+		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
 
 	token := &kvstore.OAuth2Token{
@@ -112,13 +111,13 @@ func (p *Plugin) refreshToken(token *kvstore.OAuth2Token) (*kvstore.OAuth2Token,
 
 	resp, err := httpClient.PostForm(googleTokenURL, data)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to refresh token")
+		return nil, fmt.Errorf("failed to refresh token: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read refresh response")
+		return nil, fmt.Errorf("failed to read refresh response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -127,7 +126,7 @@ func (p *Plugin) refreshToken(token *kvstore.OAuth2Token) (*kvstore.OAuth2Token,
 
 	var tokenResp tokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return nil, errors.Wrap(err, "failed to parse refresh response")
+		return nil, fmt.Errorf("failed to parse refresh response: %w", err)
 	}
 
 	newToken := &kvstore.OAuth2Token{
@@ -157,7 +156,7 @@ func (p *Plugin) getValidToken(userID string) (*kvstore.OAuth2Token, error) {
 	if time.Until(token.Expiry) < time.Minute {
 		token, err = p.refreshToken(token)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to refresh expired token")
+			return nil, fmt.Errorf("failed to refresh expired token: %w", err)
 		}
 		if err := p.kvstore.StoreOAuth2Token(userID, token); err != nil {
 			p.API.LogError("Failed to store refreshed token", "error", err.Error())
@@ -168,8 +167,8 @@ func (p *Plugin) getValidToken(userID string) (*kvstore.OAuth2Token, error) {
 }
 
 type meetSpaceResponse struct {
-	Name       string `json:"name"`
-	MeetingURI string `json:"meetingUri"`
+	Name        string `json:"name"`
+	MeetingURI  string `json:"meetingUri"`
 	MeetingCode string `json:"meetingCode"`
 }
 
@@ -177,7 +176,7 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, er
 	reqURL := googleMeetURL + "/spaces"
 	req, err := http.NewRequest(http.MethodPost, reqURL, nil)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to create request")
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
@@ -185,13 +184,13 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, er
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to create meeting space")
+		return "", fmt.Errorf("failed to create meeting space: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to read response")
+		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusForbidden && strings.Contains(string(body), "ACCESS_TOKEN_SCOPE_INSUFFICIENT") {
@@ -204,7 +203,7 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, er
 
 	var space meetSpaceResponse
 	if err := json.Unmarshal(body, &space); err != nil {
-		return "", errors.Wrap(err, "failed to parse Meet API response")
+		return "", fmt.Errorf("failed to parse Meet API response: %w", err)
 	}
 
 	if space.MeetingURI == "" {

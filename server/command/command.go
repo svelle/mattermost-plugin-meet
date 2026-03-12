@@ -112,9 +112,17 @@ func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResp
 	}
 
 	if err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
+		if err.Error() == "needs_reconnect" {
+			connectURL := c.meetingStarter.GetConnectURL()
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL),
+			}
+		}
+		c.client.Log.Error("Failed to create meeting", "user_id", args.UserId, "error", err.Error())
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         fmt.Sprintf("Failed to create meeting: %s", err.Error()),
+			Text:         "Failed to create meeting. Please try again or check the server logs.",
 		}
 	}
 

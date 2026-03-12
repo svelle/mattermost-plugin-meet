@@ -70,7 +70,7 @@ func (p *Plugin) updateSettingsHeader() {
 
 	header := fmt.Sprintf(
 		"**Setup instructions:**\n"+
-			"1. Enable the [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com) for your Google Cloud project.\n"+
+			"1. Enable the [Google Meet REST API](https://console.cloud.google.com/apis/library/meet.googleapis.com) for your Google Cloud project.\n"+
 			"2. Create an [OAuth 2.0 Client ID](https://console.cloud.google.com/apis/credentials) (Web application type).\n"+
 			"3. Add the following as an authorized redirect URI: `%s`\n"+
 			"4. Enter the Client ID and Client Secret below.",
