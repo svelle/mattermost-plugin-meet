@@ -79,7 +79,9 @@ export default class Plugin {
                     return;
                 }
                 if (data.error === 'not_connected') {
-                    window.open(data.connect_url, '_blank');
+                    if (window.confirm('You need to connect your Google account to start a meeting. Connect now?')) {
+                        window.open(data.connect_url, '_blank');
+                    }
                     return;
                 }
                 if (data.error === 'meeting_failed') {

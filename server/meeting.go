@@ -39,13 +39,13 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		return errors.Wrap(appErr, "failed to get user")
 	}
 
-	message := fmt.Sprintf("@%s started a new meeting", user.Username)
+	message := "I have started a meeting"
 	if topic != "" {
-		message = fmt.Sprintf("@%s started a new meeting: **%s**", user.Username, topic)
+		message = fmt.Sprintf("I have started a meeting: **%s**", topic)
 	}
 
 	post := &model.Post{
-		UserId:    p.botID,
+		UserId:    userID,
 		ChannelId: channelID,
 		Message:   message,
 		Type:      "custom_google_meet",
@@ -54,11 +54,10 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 			"meeting_topic": topic,
 			"attachments": []*model.SlackAttachment{
 				{
-					Fallback:  fmt.Sprintf("Join Google Meet: %s", meetURL),
-					Title:     "Join Google Meet",
-					TitleLink: meetURL,
-					Color:     "#00832d",
-					Text:      fmt.Sprintf(":video_camera: [Join Google Meet](%s)", meetURL),
+					Fallback: fmt.Sprintf("Google Meet: %s", meetURL),
+					Title:    "Google Meet",
+					Text:     fmt.Sprintf("Meeting URL: %s\n\n[**JOIN MEETING**](%s)", meetURL, meetURL),
+					Color:    "#00832d",
 				},
 			},
 		},
