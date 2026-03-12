@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -112,13 +113,14 @@ func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResp
 	}
 
 	if err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
-		if err.Error() == "needs_reconnect" {
+		if errors.Is(err, ErrNeedsReconnect) {
 			connectURL := c.meetingStarter.GetConnectURL()
 			return &model.CommandResponse{
 				ResponseType: model.CommandResponseTypeEphemeral,
 				Text:         fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL),
 			}
 		}
+		// NewCommandHandler always sets c.client, but tests may construct Handler directly.
 		if c.client != nil {
 			c.client.Log.Error("Failed to create meeting", "user_id", args.UserId, "error", err.Error())
 		}

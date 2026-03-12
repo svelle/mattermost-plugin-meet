@@ -283,12 +283,12 @@ export interface PluginRegistry {
     registerChannelHeaderButtonAction(
         ...args: [
             icon: ReactResolvable,
-            action: () => void,
+            action: (channel: Channel, channelMember?: unknown) => void | Promise<void>,
             dropdownText: string,
             tooltipText: string
         ] | [{
             icon: ReactResolvable;
-            action: () => void;
+            action: (channel: Channel, channelMember?: unknown) => void | Promise<void>;
             dropdownText: string;
             tooltipText: string;
         }]

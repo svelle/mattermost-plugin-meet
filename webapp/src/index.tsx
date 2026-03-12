@@ -2,9 +2,11 @@ import manifest from 'manifest';
 import React from 'react';
 import type {Store} from 'redux';
 
+import type {GlobalState} from '@mattermost/types/store';
+
 import {makeStyleFromTheme} from 'mattermost-redux/utils/theme_utils';
 
-import type {GlobalState} from '@mattermost/types/store';
+import ExternalLink from 'components/external_link';
 
 import type {PluginRegistry} from 'types/mattermost-webapp';
 
@@ -16,16 +18,45 @@ const GoogleMeetIcon = () => (
         width='16px'
         height='13px'
     >
-        <path fill='#00832d' d='M49.5 36l8.53 9.75 11.47 7.33 2-17.02-2-16.64-11.69 6.44z'/>
-        <path fill='#0066da' d='M0 51.5V66c0 3.315 2.685 6 6 6h14.5l3-10.96-3-9.54-9.95-3z'/>
-        <path fill='#e94235' d='M20.5 0L0 20.5l10.55 3 9.95-3 2.95-9.41z'/>
-        <path fill='#2684fc' d='M20.5 20.5H0v31h20.5z'/>
-        <path fill='#00ac47' d='M82.6 8.68L69.5 19.42v33.66l13.16 10.79c1.97 1.54 4.85.135 4.85-2.37V11c0-2.535-2.945-3.925-4.91-2.32zM49.5 36v15.5h-29V72h43c3.315 0 6-2.685 6-6V53.08z'/>
-        <path fill='#ffba00' d='M63.5 0h-43v20.5h29V36l20-16.57V6c0-3.315-2.685-6-6-6z'/>
+        <path
+            fill='#00832d'
+            d='M49.5 36l8.53 9.75 11.47 7.33 2-17.02-2-16.64-11.69 6.44z'
+        />
+        <path
+            fill='#0066da'
+            d='M0 51.5V66c0 3.315 2.685 6 6 6h14.5l3-10.96-3-9.54-9.95-3z'
+        />
+        <path
+            fill='#e94235'
+            d='M20.5 0L0 20.5l10.55 3 9.95-3 2.95-9.41z'
+        />
+        <path
+            fill='#2684fc'
+            d='M20.5 20.5H0v31h20.5z'
+        />
+        <path
+            fill='#00ac47'
+            d='M82.6 8.68L69.5 19.42v33.66l13.16 10.79c1.97 1.54 4.85.135 4.85-2.37V11c0-2.535-2.945-3.925-4.91-2.32zM49.5 36v15.5h-29V72h43c3.315 0 6-2.685 6-6V53.08z'
+        />
+        <path
+            fill='#ffba00'
+            d='M63.5 0h-43v20.5h29V36l20-16.57V6c0-3.315-2.685-6-6-6z'
+        />
     </svg>
 );
 
-const VIDEO_CAMERA_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
+const VideoCameraIcon = ({style}: {style?: React.CSSProperties}) => (
+    <svg
+        xmlns='http://www.w3.org/2000/svg'
+        viewBox='0 0 24 24'
+        width='16px'
+        height='16px'
+        fill='currentColor'
+        style={style}
+    >
+        <path d='M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z'/>
+    </svg>
+);
 
 const getStyle = makeStyleFromTheme((theme: Record<string, string>) => {
     return {
@@ -50,7 +81,7 @@ const getStyle = makeStyleFromTheme((theme: Record<string, string>) => {
         },
         buttonIcon: {
             paddingRight: '8px',
-            fill: theme.buttonColor,
+            verticalAlign: 'text-bottom',
         },
     };
 });
@@ -68,9 +99,7 @@ interface PostTypeGoogleMeetProps {
 
 const PostTypeGoogleMeet = ({post, theme}: PostTypeGoogleMeetProps) => {
     const style = getStyle(theme);
-    const props = post.props || {};
-    const meetingLink = props.meeting_link || '';
-    const meetingTopic = props.meeting_topic || '';
+    const {meeting_link: meetingLink = '', meeting_topic: meetingTopic = ''} = post.props || {};
 
     const {formatText, messageHtmlToComponent} = (window as any).PostUtils || {};
 
@@ -87,30 +116,21 @@ const PostTypeGoogleMeet = ({post, theme}: PostTypeGoogleMeetProps) => {
     const subtitle = (
         <span>
             {'Meeting URL: '}
-            <a
-                rel='noopener noreferrer'
-                target='_blank'
-                href={meetingLink}
-            >
+            <ExternalLink href={meetingLink}>
                 {meetingLink}
-            </a>
+            </ExternalLink>
         </span>
     );
 
     const content = (
-        <a
+        <ExternalLink
             className='btn btn-primary'
             style={style.button}
-            rel='noopener noreferrer'
-            target='_blank'
             href={meetingLink}
         >
-            <i
-                style={style.buttonIcon}
-                dangerouslySetInnerHTML={{__html: VIDEO_CAMERA_SVG}}
-            />
+            <VideoCameraIcon style={style.buttonIcon}/>
             {'JOIN MEETING'}
-        </a>
+        </ExternalLink>
     );
 
     return (
@@ -159,6 +179,31 @@ const doFetch = async (url: string, options: RequestInit = {}): Promise<Response
     });
 };
 
+const postEphemeralMessage = (store: Store<GlobalState>, channelID: string, message: string) => {
+    const currentUserId = store.getState().entities.users.currentUserId;
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+
+    // Plugins do not get a dedicated client-side ephemeral message API from the
+    // registry, so we dispatch a local system_ephemeral post directly into Redux.
+    // This is intentionally client-only: it is not persisted to the server, will
+    // only appear for the current client session, and may disappear on refresh.
+    store.dispatch({
+        type: 'RECEIVED_NEW_POST',
+        data: {
+            id: `meet_message_${timestamp}_${randomSuffix}`,
+            create_at: timestamp,
+            update_at: timestamp,
+            delete_at: 0,
+            user_id: currentUserId,
+            channel_id: channelID,
+            message,
+            type: 'system_ephemeral',
+            props: {},
+        },
+    });
+};
+
 export default class Plugin {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public async initialize(registry: PluginRegistry, store: Store<GlobalState>) {
@@ -196,35 +241,24 @@ export default class Plugin {
                 const data = await resp.json();
                 if (data.error === 'not_configured') {
                     if (data.configure_url) {
-                        window.open(data.configure_url, '_blank');
+                        window.open(data.configure_url, '_blank', 'noopener,noreferrer');
                     }
                     return;
                 }
                 if (data.error === 'not_connected') {
-                    if (window.confirm('You need to connect your Google account to start a meeting. Connect now?')) {
-                        window.open(data.connect_url, '_blank');
-                    }
+                    postEphemeralMessage(
+                        store,
+                        channel.id,
+                        `You need to connect your Google account first. [Click here to connect](${data.connect_url}).`,
+                    );
                     return;
                 }
                 if (data.error === 'meeting_failed') {
-                    // Post ephemeral-style error via the store
-                    const currentUserId = store.getState().entities.users.currentUserId;
-                    const timestamp = Date.now();
-                    const randomSuffix = Math.random().toString(36).substring(2, 8);
-                    store.dispatch({
-                        type: 'RECEIVED_NEW_POST',
-                        data: {
-                            id: `meet_error_${timestamp}_${randomSuffix}`,
-                            create_at: timestamp,
-                            update_at: timestamp,
-                            delete_at: 0,
-                            user_id: currentUserId,
-                            channel_id: channel.id,
-                            message: `Failed to create Google Meet meeting: ${data.message || 'Unknown error'}. Please try again.`,
-                            type: 'system_ephemeral',
-                            props: {},
-                        },
-                    });
+                    postEphemeralMessage(
+                        store,
+                        channel.id,
+                        `Failed to create Google Meet meeting: ${data.message || 'Unknown error'}. Please try again.`,
+                    );
                 }
             },
             'Start Google Meet',

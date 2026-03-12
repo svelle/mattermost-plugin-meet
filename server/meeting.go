@@ -4,11 +4,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/mattermost/mattermost-plugin-meet/server/command"
 	"github.com/mattermost/mattermost/server/public/model"
 )
-
-// ErrNeedsReconnect indicates the user must re-connect their Google account.
-var ErrNeedsReconnect = errors.New("needs_reconnect")
 
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	if !p.API.HasPermissionToChannel(userID, channelID, model.PermissionCreatePost) {
@@ -29,8 +27,10 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	if err != nil {
 		if errors.Is(err, ErrInsufficientScopes) {
 			// Token has old scopes — delete it so the user re-authenticates with the correct scope
-			_ = p.kvstore.DeleteOAuth2Token(userID)
-			return ErrNeedsReconnect
+			if delErr := p.kvstore.DeleteOAuth2Token(userID); delErr != nil {
+				p.API.LogWarn("Failed to delete OAuth token after insufficient scopes", "user_id", userID, "error", delErr.Error())
+			}
+			return command.ErrNeedsReconnect
 		}
 		return fmt.Errorf("failed to create Google Meet meeting: %w", err)
 	}
@@ -85,6 +85,10 @@ func (p *Plugin) IsUserAdmin(userID string) (bool, error) {
 }
 
 func (p *Plugin) GetPluginConfigureURL() string {
-	siteURL := *p.API.GetConfig().ServiceSettings.SiteURL
-	return fmt.Sprintf("%s/admin_console/plugins/plugin_%s", siteURL, manifest.Id)
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/admin_console/plugins/plugin_%s", siteURL, manifestID())
 }

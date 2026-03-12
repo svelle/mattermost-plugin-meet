@@ -36,10 +36,10 @@ func (m *mockPluginAPI) GetConfig() *model.Config {
 	}
 }
 
-func (m *mockPluginAPI) LogDebug(msg string, keyValuePairs ...any)  {}
-func (m *mockPluginAPI) LogInfo(msg string, keyValuePairs ...any)   {}
-func (m *mockPluginAPI) LogWarn(msg string, keyValuePairs ...any)   {}
-func (m *mockPluginAPI) LogError(msg string, keyValuePairs ...any)  { m.logged = append(m.logged, msg) }
+func (m *mockPluginAPI) LogDebug(msg string, keyValuePairs ...any) {}
+func (m *mockPluginAPI) LogInfo(msg string, keyValuePairs ...any)  {}
+func (m *mockPluginAPI) LogWarn(msg string, keyValuePairs ...any)  {}
+func (m *mockPluginAPI) LogError(msg string, keyValuePairs ...any) { m.logged = append(m.logged, msg) }
 func (m *mockPluginAPI) LoadPluginConfiguration(_ any) error {
 	return nil
 }
@@ -228,7 +228,8 @@ func TestHandleCreateMeeting_BadRequest(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		var resp map[string]string
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
 		assert.Contains(t, resp["error"], "Invalid request body")
 	})
 
@@ -241,7 +242,8 @@ func TestHandleCreateMeeting_BadRequest(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		var resp map[string]string
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
 		assert.Contains(t, resp["error"], "channel_id is required")
 	})
 }

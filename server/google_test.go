@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,6 +20,10 @@ func TestCreateMeeting_Success(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/v2/spaces", r.URL.Path)
 		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{}`, string(body))
 
 		resp := meetSpaceResponse{
 			Name:        "spaces/abc123",
@@ -103,7 +108,7 @@ func TestCreateMeeting_APIError(t *testing.T) {
 
 	_, err := p.createMeeting(token, "")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Meet API returned status 500")
+	assert.Contains(t, err.Error(), "meet API returned status 500")
 }
 
 func TestCreateMeeting_EmptyMeetingURI(t *testing.T) {
@@ -235,6 +240,20 @@ func TestExchangeCodeForToken_ErrorResponse(t *testing.T) {
 	_, err := p.exchangeCodeForToken("bad-code")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token exchange failed with status 400")
+}
+
+func TestExchangeCodeForToken_RequiresSiteURL(t *testing.T) {
+	p := &Plugin{}
+	p.setConfiguration(&configuration{
+		GoogleClientID:     "client-id",
+		GoogleClientSecret: "client-secret",
+		EncryptionKey:      "enc-key",
+	})
+	p.MattermostPlugin.API = &mockPluginAPI{}
+
+	_, err := p.exchangeCodeForToken("test-code")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "site URL")
 }
 
 func TestRefreshToken_KeepsExistingRefreshToken(t *testing.T) {

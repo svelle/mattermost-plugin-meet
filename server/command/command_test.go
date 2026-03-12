@@ -32,7 +32,7 @@ func (m *mockMeetingStarter) StartMeeting(userID, channelID, topic string) error
 	return m.startErr
 }
 
-func (m *mockMeetingStarter) GetConnectURL() string        { return m.connectURL }
+func (m *mockMeetingStarter) GetConnectURL() string         { return m.connectURL }
 func (m *mockMeetingStarter) IsPluginConfigured() bool      { return m.configured }
 func (m *mockMeetingStarter) GetPluginConfigureURL() string { return m.configureURL }
 
@@ -179,7 +179,7 @@ func TestExecuteMeetCommand_NeedsReconnect(t *testing.T) {
 	mock := &mockMeetingStarter{
 		configured: true,
 		connected:  true,
-		startErr:   errors.New("needs_reconnect"),
+		startErr:   ErrNeedsReconnect,
 		connectURL: "http://localhost/connect",
 	}
 	handler := &Handler{meetingStarter: mock}

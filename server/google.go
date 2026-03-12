@@ -23,20 +23,36 @@ const (
 
 // These are vars so tests can override them with httptest servers.
 var (
+	// #nosec G101 -- OAuth endpoint URLs are public constants, not credentials.
 	googleTokenURL = "https://oauth2.googleapis.com/token"
 	googleMeetURL  = "https://meet.googleapis.com/v2"
 	httpClient     = &http.Client{Timeout: 30 * time.Second}
 )
 
+func (p *Plugin) getOAuth2CallbackURL() string {
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/plugins/%s/api/v1/oauth/callback", siteURL, manifestID())
+}
+
 func (p *Plugin) getOAuth2ConnectURL() string {
-	siteURL := *p.API.GetConfig().ServiceSettings.SiteURL
-	return fmt.Sprintf("%s/plugins/%s/api/v1/oauth/connect", siteURL, manifest.Id)
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/plugins/%s/api/v1/oauth/connect", siteURL, manifestID())
 }
 
 func (p *Plugin) buildAuthURL(state string) string {
 	config := p.getConfiguration()
-	siteURL := *p.API.GetConfig().ServiceSettings.SiteURL
-	redirectURI := fmt.Sprintf("%s/plugins/%s/api/v1/oauth/callback", siteURL, manifest.Id)
+	redirectURI := p.getOAuth2CallbackURL()
+	if redirectURI == "" {
+		return ""
+	}
 
 	params := url.Values{
 		"client_id":     {config.GoogleClientID},
@@ -61,8 +77,10 @@ type tokenResponse struct {
 
 func (p *Plugin) exchangeCodeForToken(code string) (*kvstore.OAuth2Token, error) {
 	config := p.getConfiguration()
-	siteURL := *p.API.GetConfig().ServiceSettings.SiteURL
-	redirectURI := fmt.Sprintf("%s/plugins/%s/api/v1/oauth/callback", siteURL, manifest.Id)
+	redirectURI := p.getOAuth2CallbackURL()
+	if redirectURI == "" {
+		return nil, errors.New("mattermost site URL is not configured")
+	}
 
 	data := url.Values{
 		"code":          {code},
@@ -76,7 +94,11 @@ func (p *Plugin) exchangeCodeForToken(code string) (*kvstore.OAuth2Token, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange code for token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil && p.API != nil {
+			p.API.LogWarn("Failed to close response body", "description", "token exchange response", "error", closeErr.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -116,7 +138,11 @@ func (p *Plugin) refreshToken(token *kvstore.OAuth2Token) (*kvstore.OAuth2Token,
 	if err != nil {
 		return nil, fmt.Errorf("failed to refresh token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil && p.API != nil {
+			p.API.LogWarn("Failed to close response body", "description", "token refresh response", "error", closeErr.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -177,7 +203,7 @@ type meetSpaceResponse struct {
 
 func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, error) {
 	reqURL := googleMeetURL + "/spaces"
-	req, err := http.NewRequest(http.MethodPost, reqURL, nil)
+	req, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader("{}"))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -189,7 +215,11 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, er
 	if err != nil {
 		return "", fmt.Errorf("failed to create meeting space: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil && p.API != nil {
+			p.API.LogWarn("Failed to close response body", "description", "meeting creation response", "error", closeErr.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -201,7 +231,7 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, er
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Meet API returned status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("meet API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var space meetSpaceResponse

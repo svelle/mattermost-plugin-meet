@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/mattermost/mattermost-plugin-meet/server/command"
 	"github.com/mattermost/mattermost/server/public/plugin"
 )
 
@@ -93,6 +94,11 @@ func (p *Plugin) handleOAuthConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authURL := p.buildAuthURL(state)
+	if authURL == "" {
+		p.handleError(w, errors.New("mattermost site URL is not configured"))
+		return
+	}
+
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
@@ -148,7 +154,12 @@ type createMeetingRequest struct {
 func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
-	isAdmin, _ := p.IsUserAdmin(userID)
+	isAdmin, err := p.IsUserAdmin(userID)
+	if err != nil {
+		// Degrade to non-admin so the status endpoint still works for regular users.
+		p.API.LogError("Failed to check admin status for config status", "user_id", userID, "error", err.Error())
+		isAdmin = false
+	}
 	configured := p.IsPluginConfigured()
 
 	resp := map[string]interface{}{
@@ -169,7 +180,12 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
 	if !p.IsPluginConfigured() {
-		isAdmin, _ := p.IsUserAdmin(userID)
+		isAdmin, err := p.IsUserAdmin(userID)
+		if err != nil {
+			// Degrade to non-admin so unconfigured users still get a stable JSON response.
+			p.API.LogError("Failed to check admin status for meeting creation", "user_id", userID, "error", err.Error())
+			isAdmin = false
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]interface{}{
@@ -216,7 +232,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
-		if errors.Is(err, ErrNeedsReconnect) {
+		if errors.Is(err, command.ErrNeedsReconnect) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			resp := map[string]string{
