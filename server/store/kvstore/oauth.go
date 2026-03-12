@@ -137,7 +137,9 @@ func (kv *Client) GetAndDeleteOAuth2State(state string) (string, error) {
 		return "", ErrStateNotFound
 	}
 
-	_ = kv.client.KV.Delete(oauthStatePrefix + state)
+	if err := kv.client.KV.Delete(oauthStatePrefix + state); err != nil {
+		return "", errors.Wrap(err, "failed to delete OAuth state")
+	}
 
 	return string(userID), nil
 }

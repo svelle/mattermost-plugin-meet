@@ -74,6 +74,15 @@ func (p *Plugin) handleErrorWithCode(w http.ResponseWriter, code int, publicErro
 	_, _ = w.Write(responseMsg)
 }
 
+func addConfigureDetails(resp map[string]any, configureURL string) {
+	if configureURL != "" {
+		resp["configure_url"] = configureURL
+		return
+	}
+
+	resp["configure_help"] = "Mattermost Site URL must be configured before the System Console link is available."
+}
+
 func (p *Plugin) handleOAuthConnect(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
@@ -180,7 +189,7 @@ func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
 		"is_admin":   isAdmin,
 	}
 	if isAdmin && !configured {
-		resp["configure_url"] = p.GetPluginConfigureURL()
+		addConfigureDetails(resp, p.GetPluginConfigureURL())
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -206,7 +215,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 			"is_admin": isAdmin,
 		}
 		if isAdmin {
-			resp["configure_url"] = p.GetPluginConfigureURL()
+			addConfigureDetails(resp, p.GetPluginConfigureURL())
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			p.API.LogError("Failed to encode response", "error", err.Error())
@@ -255,6 +264,10 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 			if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
 				p.API.LogError("Failed to encode response", "error", encErr.Error())
 			}
+			return
+		}
+		if errors.Is(err, ErrNoChannelPermission) {
+			p.handleErrorWithCode(w, http.StatusForbidden, "You do not have permission to create posts in this channel.", nil)
 			return
 		}
 		p.handleError(w, fmt.Errorf("failed to create meeting: %w", err))

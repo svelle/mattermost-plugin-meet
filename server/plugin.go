@@ -20,8 +20,9 @@ import (
 type Plugin struct {
 	plugin.MattermostPlugin
 
-	kvstore kvstore.KVStore
-	client  *pluginapi.Client
+	kvstore     kvstore.KVStore
+	kvstoreLock sync.RWMutex
+	client      *pluginapi.Client
 
 	commandClient command.Command
 
@@ -35,6 +36,10 @@ type Plugin struct {
 func (p *Plugin) OnActivate() error {
 	p.client = pluginapi.NewClient(p.API, p.Driver)
 
+	if err := p.OnConfigurationChange(); err != nil {
+		return err
+	}
+
 	botID, err := p.client.Bot.EnsureBot(&model.Bot{
 		Username:    "google-meet",
 		DisplayName: "Google Meet",
@@ -45,33 +50,54 @@ func (p *Plugin) OnActivate() error {
 	}
 	p.botID = botID
 
-	config := p.getConfiguration()
-	if p.IsPluginConfigured() {
-		p.kvstore = kvstore.NewKVStore(p.client, config.EncryptionKey)
-	} else {
-		p.kvstore = nil
-		p.API.LogWarn("Plugin configuration is incomplete. Google OAuth remains unavailable until plugin setup is completed.")
+	if err := p.pluginReadinessError(); err != nil {
+		p.API.LogWarn("Plugin configuration is incomplete. Google OAuth remains unavailable until plugin setup is completed.", "error", err.Error())
 	}
 
 	p.commandClient = command.NewCommandHandler(p.client, p)
 
 	p.router = p.initRouter()
 
-	p.updateSettingsHeader()
+	return nil
+}
+
+func (p *Plugin) setKVStore(store kvstore.KVStore) {
+	p.kvstoreLock.Lock()
+	defer p.kvstoreLock.Unlock()
+
+	p.kvstore = store
+}
+
+func (p *Plugin) getKVStore() kvstore.KVStore {
+	p.kvstoreLock.RLock()
+	defer p.kvstoreLock.RUnlock()
+
+	return p.kvstore
+}
+
+func (p *Plugin) pluginReadinessError() error {
+	if err := p.getConfiguration().IsValid(); err != nil {
+		return err
+	}
+
+	if p.getSiteURL() == "" {
+		return errors.New("mattermost site URL is not configured")
+	}
 
 	return nil
 }
 
 func (p *Plugin) getOAuthKVStore() (kvstore.KVStore, error) {
-	if !p.IsPluginConfigured() {
-		return nil, p.getConfiguration().IsValid()
+	if err := p.pluginReadinessError(); err != nil {
+		return nil, err
 	}
 
-	if p.kvstore == nil {
+	store := p.getKVStore()
+	if store == nil {
 		return nil, errors.New("OAuth storage is not initialized")
 	}
 
-	return p.kvstore, nil
+	return store, nil
 }
 
 func (p *Plugin) getSiteURL() string {

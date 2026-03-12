@@ -78,6 +78,12 @@ func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResp
 		}
 		if isAdmin {
 			configURL := c.meetingStarter.GetPluginConfigureURL()
+			if configURL == "" {
+				return &model.CommandResponse{
+					ResponseType: model.CommandResponseTypeEphemeral,
+					Text:         "The Google Meet plugin is not configured. Mattermost Site URL must be configured before the System Console link is available.",
+				}
+			}
 			return &model.CommandResponse{
 				ResponseType: model.CommandResponseTypeEphemeral,
 				Text:         fmt.Sprintf("The Google Meet plugin is not configured. [Configure it in the System Console](%s).", configURL),

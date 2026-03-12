@@ -2,6 +2,7 @@ import manifest from 'manifest';
 import React from 'react';
 import type {Store} from 'redux';
 
+import type {Channel} from '@mattermost/types/channels';
 import type {GlobalState} from '@mattermost/types/store';
 
 import {makeStyleFromTheme} from 'mattermost-redux/utils/theme_utils';
@@ -200,6 +201,7 @@ const postEphemeralMessage = (store: Store<GlobalState>, channelID: string, mess
             message,
             type: 'system_ephemeral',
             props: {},
+            features: {crtEnabled: false},
         },
     });
 };
@@ -232,34 +234,89 @@ export default class Plugin {
 
         registry.registerChannelHeaderButtonAction(
             <GoogleMeetIcon/>,
-            async (channel: {id: string}) => {
-                const resp = await doFetch(`/plugins/${manifest.id}/api/v1/meeting`, {
-                    method: 'POST',
-                    body: JSON.stringify({channel_id: channel.id}),
-                });
-
-                const data = await resp.json();
-                if (data.error === 'not_configured') {
-                    if (data.configure_url) {
-                        window.open(data.configure_url, '_blank', 'noopener,noreferrer');
+            (channel: Channel) => {
+                const startMeeting = async () => {
+                    let resp: Response;
+                    try {
+                        resp = await doFetch(`/plugins/${manifest.id}/api/v1/meeting`, {
+                            method: 'POST',
+                            body: JSON.stringify({channel_id: channel.id}),
+                        });
+                    } catch {
+                        postEphemeralMessage(store, channel.id, 'Unable to reach the server to start a Google Meet meeting. Please try again.');
+                        return;
                     }
-                    return;
-                }
-                if (data.error === 'not_connected') {
-                    postEphemeralMessage(
-                        store,
-                        channel.id,
-                        `You need to connect your Google account first. [Click here to connect](${data.connect_url}).`,
-                    );
-                    return;
-                }
-                if (data.error === 'meeting_failed') {
-                    postEphemeralMessage(
-                        store,
-                        channel.id,
-                        `Failed to create Google Meet meeting: ${data.message || 'Unknown error'}. Please try again.`,
-                    );
-                }
+
+                    const contentType = resp.headers.get('Content-Type') || '';
+                    if (!contentType.includes('application/json')) {
+                        const message = resp.ok ?
+                            'Received an unexpected response from the server while starting a Google Meet meeting.' :
+                            `Failed to start a Google Meet meeting (HTTP ${resp.status}). Please try again.`;
+                        postEphemeralMessage(store, channel.id, message);
+                        return;
+                    }
+
+                    let data: Record<string, any>;
+                    try {
+                        data = await resp.json();
+                    } catch {
+                        postEphemeralMessage(store, channel.id, 'Received an unreadable response from the server while starting a Google Meet meeting.');
+                        return;
+                    }
+
+                    if (!resp.ok) {
+                        const serverError = typeof data.error === 'string' ? data.error : `HTTP ${resp.status}`;
+                        postEphemeralMessage(
+                            store,
+                            channel.id,
+                            `Failed to start a Google Meet meeting: ${serverError}. Please try again.`,
+                        );
+                        return;
+                    }
+
+                    if (data.error === 'not_configured') {
+                        if (data.configure_url) {
+                            window.open(data.configure_url, '_blank', 'noopener,noreferrer');
+                            return;
+                        }
+
+                        postEphemeralMessage(
+                            store,
+                            channel.id,
+                            data.configure_help || 'The Google Meet plugin is not fully configured yet. Please ask an administrator to finish setup.',
+                        );
+                        return;
+                    }
+
+                    if (data.error === 'not_connected') {
+                        const connectMessage = data.connect_url ?
+                            `You need to connect your Google account first. [Click here to connect](${data.connect_url}).` :
+                            'You need to connect your Google account first.';
+                        postEphemeralMessage(store, channel.id, connectMessage);
+                        return;
+                    }
+
+                    if (data.error === 'meeting_failed') {
+                        postEphemeralMessage(
+                            store,
+                            channel.id,
+                            `Failed to create Google Meet meeting: ${data.message || 'Unknown error'}. Please try again.`,
+                        );
+                        return;
+                    }
+
+                    if (data.status !== 'ok') {
+                        postEphemeralMessage(
+                            store,
+                            channel.id,
+                            'Received an unexpected response from the server while starting a Google Meet meeting.',
+                        );
+                    }
+                };
+
+                startMeeting().catch(() => {
+                    postEphemeralMessage(store, channel.id, 'Unable to start a Google Meet meeting. Please try again.');
+                });
             },
             'Start Google Meet',
             'Start a Google Meet meeting',

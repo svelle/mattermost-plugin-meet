@@ -6,7 +6,7 @@
 import type {Reducer} from 'redux';
 
 import type {WebSocketMessage} from '@mattermost/client';
-import type {Channel} from '@mattermost/types/channels';
+import type {Channel, ChannelMembership} from '@mattermost/types/channels';
 import type {FileInfo} from '@mattermost/types/files';
 import type {Post, PostEmbed} from '@mattermost/types/posts';
 import type {ProductScope} from '@mattermost/types/products';
@@ -283,12 +283,12 @@ export interface PluginRegistry {
     registerChannelHeaderButtonAction(
         ...args: [
             icon: ReactResolvable,
-            action: (channel: Channel, channelMember?: unknown) => void | Promise<void>,
+            action: (channel: Channel, member?: ChannelMembership) => void,
             dropdownText: string,
             tooltipText: string
         ] | [{
             icon: ReactResolvable;
-            action: (channel: Channel, channelMember?: unknown) => void | Promise<void>;
+            action: (channel: Channel, member?: ChannelMembership) => void;
             dropdownText: string;
             tooltipText: string;
         }]

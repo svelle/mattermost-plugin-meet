@@ -68,9 +68,9 @@ func (p *Plugin) OnConfigurationChange() error {
 	p.setConfiguration(configuration)
 	if p.client != nil {
 		if configuration.IsValid() == nil {
-			p.kvstore = kvstore.NewKVStore(p.client, configuration.EncryptionKey)
+			p.setKVStore(kvstore.NewKVStore(p.client, configuration.EncryptionKey))
 		} else {
-			p.kvstore = nil
+			p.setKVStore(nil)
 		}
 	}
 	p.updateSettingsHeader()

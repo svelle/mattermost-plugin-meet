@@ -81,6 +81,23 @@ func TestExecuteMeetCommand_NotConfigured_Admin(t *testing.T) {
 	assert.Equal(t, model.CommandResponseTypeEphemeral, resp.ResponseType)
 }
 
+func TestExecuteMeetCommand_NotConfigured_AdminWithoutConfigureURL(t *testing.T) {
+	mock := &mockMeetingStarter{
+		configured: false,
+		isAdmin:    true,
+	}
+	handler := &Handler{meetingStarter: mock}
+
+	resp, err := handler.Handle(&model.CommandArgs{
+		Command:   "/meet",
+		UserId:    "user1",
+		ChannelId: "chan1",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, resp.Text, "Mattermost Site URL")
+	assert.NotContains(t, resp.Text, "Configure it in the System Console")
+}
+
 func TestExecuteMeetCommand_NotConfigured_NonAdmin(t *testing.T) {
 	mock := &mockMeetingStarter{configured: false, isAdmin: false}
 	handler := &Handler{meetingStarter: mock}

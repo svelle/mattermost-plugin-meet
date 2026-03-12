@@ -131,7 +131,7 @@ func setupPlugin(t *testing.T) (*Plugin, *mockPluginAPI, *mockKVStore) {
 
 	p := &Plugin{}
 	p.API = api
-	p.kvstore = kv
+	p.setKVStore(kv)
 	p.setConfiguration(&configuration{
 		GoogleClientID:     "test-client-id",
 		GoogleClientSecret: "test-client-secret",
@@ -197,6 +197,31 @@ func TestHandleConfigStatus(t *testing.T) {
 		assert.Equal(t, false, resp["configured"])
 		assert.Contains(t, resp["configure_url"], "admin_console")
 	})
+
+	t.Run("unconfigured plugin without site url", func(t *testing.T) {
+		p, api, _ := setupPlugin(t)
+		api.user = &model.User{Roles: "system_admin system_user"}
+		api.siteURL = ""
+		p.setConfiguration(&configuration{
+			GoogleClientID:     "test-client-id",
+			GoogleClientSecret: "test-client-secret",
+			EncryptionKey:      "test-encryption-key",
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/config/status", nil)
+		req.Header.Set("Mattermost-User-ID", "admin1")
+		w := httptest.NewRecorder()
+		p.router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp map[string]any
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.Equal(t, false, resp["configured"])
+		_, hasConfigureURL := resp["configure_url"]
+		assert.False(t, hasConfigureURL)
+		assert.Contains(t, resp["configure_help"], "Site URL")
+	})
 }
 
 func TestHandleCreateMeeting_NotConfigured(t *testing.T) {
@@ -215,6 +240,32 @@ func TestHandleCreateMeeting_NotConfigured(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "not_configured", resp["error"])
+}
+
+func TestHandleCreateMeeting_NotConfiguredWithoutSiteURL(t *testing.T) {
+	p, api, _ := setupPlugin(t)
+	api.user = &model.User{Roles: "system_admin system_user"}
+	api.siteURL = ""
+	p.setConfiguration(&configuration{
+		GoogleClientID:     "test-client-id",
+		GoogleClientSecret: "test-client-secret",
+		EncryptionKey:      "test-encryption-key",
+	})
+
+	body, _ := json.Marshal(map[string]string{"channel_id": "chan1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meeting", bytes.NewReader(body))
+	req.Header.Set("Mattermost-User-ID", "admin1")
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "not_configured", resp["error"])
+	_, hasConfigureURL := resp["configure_url"]
+	assert.False(t, hasConfigureURL)
+	assert.Contains(t, resp["configure_help"], "Site URL")
 }
 
 func TestHandleCreateMeeting_BadRequest(t *testing.T) {
@@ -319,6 +370,29 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 	assert.Equal(t, "https://meet.google.com/test-meet", api.post.Props["meeting_link"])
 }
 
+func TestHandleCreateMeeting_NoChannelPermission(t *testing.T) {
+	p, api, kv := setupPlugin(t)
+	api.hasPerm = false
+	kv.tokens["user1"] = &kvstore.OAuth2Token{
+		AccessToken:  "valid-token",
+		TokenType:    "Bearer",
+		RefreshToken: "refresh",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+
+	body, _ := json.Marshal(map[string]string{"channel_id": "chan1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meeting", bytes.NewReader(body))
+	req.Header.Set("Mattermost-User-ID", "user1")
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	var resp map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Contains(t, resp["error"], "permission")
+}
+
 func TestHandleErrorWithCode(t *testing.T) {
 	p, api, _ := setupPlugin(t)
 
@@ -351,7 +425,7 @@ func TestHandleOAuthCallback_MissingParams(t *testing.T) {
 func TestHandleOAuthCallback_NotConfigured(t *testing.T) {
 	p, api, _ := setupPlugin(t)
 	p.setConfiguration(&configuration{})
-	p.kvstore = nil
+	p.setKVStore(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/oauth/callback?code=test-code&state=test-state", nil)
 	w := httptest.NewRecorder()

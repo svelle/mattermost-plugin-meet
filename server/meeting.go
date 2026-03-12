@@ -9,9 +9,12 @@ import (
 	"github.com/mattermost/mattermost-plugin-meet/server/command"
 )
 
+// ErrNoChannelPermission indicates the user cannot create posts in the channel.
+var ErrNoChannelPermission = errors.New("no permission to create posts in this channel")
+
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	if !p.API.HasPermissionToChannel(userID, channelID, model.PermissionCreatePost) {
-		return errors.New("you don't have permission to create posts in this channel")
+		return ErrNoChannelPermission
 	}
 
 	p.API.LogDebug("StartMeeting: getting valid token", "user_id", userID)
@@ -38,7 +41,7 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		}
 		return fmt.Errorf("failed to create Google Meet meeting: %w", err)
 	}
-	p.API.LogDebug("StartMeeting: meeting created", "user_id", userID, "meet_url", meetURL)
+	p.API.LogDebug("StartMeeting: meeting created", "user_id", userID)
 
 	message := "I have started a meeting"
 	if topic != "" {
@@ -82,7 +85,7 @@ func (p *Plugin) IsUserConnected(userID string) (bool, error) {
 }
 
 func (p *Plugin) IsPluginConfigured() bool {
-	return p.getConfiguration().IsValid() == nil
+	return p.pluginReadinessError() == nil
 }
 
 func (p *Plugin) IsUserAdmin(userID string) (bool, error) {
