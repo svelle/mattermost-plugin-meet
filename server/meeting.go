@@ -58,7 +58,7 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		},
 	}
 
-	_, appErr = p.API.CreatePost(post)
+	_, appErr := p.API.CreatePost(post)
 	if appErr != nil {
 		return errors.Wrap(appErr, "failed to create post")
 	}
