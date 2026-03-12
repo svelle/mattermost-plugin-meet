@@ -6,12 +6,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 
 	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
 )
+
+// ErrInsufficientScopes indicates the token lacks the required OAuth scope.
+var ErrInsufficientScopes = errors.New("insufficient authentication scopes")
 
 const (
 	googleAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -188,6 +192,10 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, er
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to read response")
+	}
+
+	if resp.StatusCode == http.StatusForbidden && strings.Contains(string(body), "ACCESS_TOKEN_SCOPE_INSUFFICIENT") {
+		return "", ErrInsufficientScopes
 	}
 
 	if resp.StatusCode != http.StatusOK {

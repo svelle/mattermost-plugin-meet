@@ -7,6 +7,9 @@ import (
 	"github.com/pkg/errors"
 )
 
+// ErrNeedsReconnect indicates the user must re-connect their Google account.
+var ErrNeedsReconnect = errors.New("needs_reconnect")
+
 // MeetingStarter is used by the command handler to start meetings.
 type MeetingStarter interface {
 	StartMeeting(userID, channelID, topic string) error
@@ -34,6 +37,11 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	p.API.LogDebug("StartMeeting: creating Google Meet meeting", "user_id", userID)
 	meetURL, err := p.createMeeting(token, topic)
 	if err != nil {
+		if errors.Is(err, ErrInsufficientScopes) {
+			// Token has old scopes — delete it so the user re-authenticates with the correct scope
+			_ = p.kvstore.DeleteOAuth2Token(userID)
+			return ErrNeedsReconnect
+		}
 		return errors.Wrap(err, "failed to create Google Meet meeting")
 	}
 	p.API.LogDebug("StartMeeting: meeting created", "user_id", userID, "meet_url", meetURL)

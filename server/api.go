@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -205,6 +206,19 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 
 	p.API.LogDebug("Starting meeting", "user_id", userID, "channel_id", req.ChannelID, "topic", req.Topic)
 	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
+		if errors.Is(err, ErrNeedsReconnect) {
+			p.API.LogWarn("User needs to reconnect Google account (scope change)", "user_id", userID)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			resp := map[string]string{
+				"error":       "not_connected",
+				"connect_url": p.GetConnectURL(),
+			}
+			if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
+				p.API.LogError("Failed to encode response", "error", encErr.Error())
+			}
+			return
+		}
 		p.API.LogError("Failed to create meeting", "user_id", userID, "channel_id", req.ChannelID, "error", err.Error())
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
