@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -43,7 +44,27 @@ func (p *Plugin) OnActivate() error {
 
 	p.router = p.initRouter()
 
+	p.updateSettingsHeader()
+
 	return nil
+}
+
+func (p *Plugin) updateSettingsHeader() {
+	siteURL := ""
+	if cfg := p.API.GetConfig(); cfg.ServiceSettings.SiteURL != nil {
+		siteURL = *cfg.ServiceSettings.SiteURL
+	}
+
+	redirectURI := fmt.Sprintf("%s/plugins/%s/api/v1/oauth/callback", siteURL, manifest.Id)
+
+	header := fmt.Sprintf(
+		"Configure the Google Meet plugin. You need to create a Google OAuth 2.0 Client ID in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Set the authorized redirect URI to `%s`.",
+		redirectURI,
+	)
+
+	if manifest.SettingsSchema != nil {
+		manifest.SettingsSchema.Header = header
+	}
 }
 
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {

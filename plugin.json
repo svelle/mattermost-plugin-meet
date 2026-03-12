@@ -19,7 +19,7 @@
         "bundle_path": "webapp/dist/main.js"
     },
     "settings_schema": {
-        "header": "Configure the Google Meet plugin. You need to create a Google OAuth 2.0 Client ID in the Google Cloud Console (https://console.cloud.google.com/apis/credentials). Set the authorized redirect URI to your-mattermost-url/plugins/com.mattermost.google-meet/api/v1/oauth/callback.",
+        "header": "Configure the Google Meet plugin. You need to create a Google OAuth 2.0 Client ID in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). The redirect URI will be shown here once the plugin is activated.",
         "footer": "",
         "settings": [
             {
