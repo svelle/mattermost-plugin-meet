@@ -61,12 +61,15 @@ func (kv *Client) GetOAuth2Token(userID string) (*OAuth2Token, error) {
 
 	data, err := decrypt(encrypted, kv.encryptionKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decrypt token")
+		// Token was stored with a different encryption key; delete it so the user can re-connect
+		_ = kv.client.KV.Delete(oauthTokenPrefix + userID)
+		return nil, nil
 	}
 
 	var token OAuth2Token
 	if err := json.Unmarshal(data, &token); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal token")
+		_ = kv.client.KV.Delete(oauthTokenPrefix + userID)
+		return nil, nil
 	}
 	return &token, nil
 }
