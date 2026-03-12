@@ -192,7 +192,15 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 
 	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
 		p.API.LogError("Failed to create meeting", "error", err.Error())
-		http.Error(w, fmt.Sprintf("Failed to create meeting: %s", err.Error()), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]string{
+			"error":   "meeting_failed",
+			"message": err.Error(),
+		}
+		if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
+			p.API.LogError("Failed to encode response", "error", encErr.Error())
+		}
 		return
 	}
 

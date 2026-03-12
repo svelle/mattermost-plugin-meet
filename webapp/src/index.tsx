@@ -71,11 +71,6 @@ export default class Plugin {
                     body: JSON.stringify({channel_id: channel.id}),
                 });
 
-                if (!resp.ok) {
-                    console.error('Failed to create meeting:', resp.statusText); // eslint-disable-line no-console
-                    return;
-                }
-
                 const data = await resp.json();
                 if (data.error === 'not_configured') {
                     if (data.configure_url) {
@@ -85,6 +80,30 @@ export default class Plugin {
                 }
                 if (data.error === 'not_connected') {
                     window.open(data.connect_url, '_blank');
+                    return;
+                }
+                if (data.error === 'meeting_failed') {
+                    store.dispatch({
+                        type: 'RECEIVED_WEBAPP_PLUGIN',
+                    });
+
+                    // Post ephemeral-style error via the store
+                    const currentUserId = store.getState().entities.users.currentUserId;
+                    const timestamp = Date.now();
+                    store.dispatch({
+                        type: 'RECEIVED_NEW_POST',
+                        data: {
+                            id: `meet_error_${timestamp}`,
+                            create_at: timestamp,
+                            update_at: timestamp,
+                            delete_at: 0,
+                            user_id: currentUserId,
+                            channel_id: channel.id,
+                            message: `Failed to create Google Meet meeting: ${data.message || 'Unknown error'}. Please try again.`,
+                            type: 'system_ephemeral',
+                            props: {},
+                        },
+                    });
                 }
             },
             'Start Google Meet',
