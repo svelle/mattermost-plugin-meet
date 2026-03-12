@@ -119,7 +119,10 @@ const PostTypeGoogleMeet = ({post, theme}: PostTypeGoogleMeetProps) => {
                 {preText}
             </div>
             <div className='attachment__content'>
-                <div className='clearfix attachment__container'>
+                <div
+                    className='clearfix attachment__container'
+                    style={{borderLeftColor: '#00832d'}}
+                >
                     <h5
                         className='mt-1'
                         style={style.title}
