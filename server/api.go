@@ -10,6 +10,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/mattermost/mattermost/server/public/plugin"
+
+	"github.com/mattermost/mattermost-plugin-meet/server/pluginerrors"
 )
 
 func (p *Plugin) initRouter() *mux.Router {
@@ -93,6 +95,10 @@ func (p *Plugin) handleOAuthConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authURL := p.buildAuthURL(state)
+	if authURL == "" {
+		p.handleError(w, errors.New("failed to build OAuth URL: Mattermost Site URL is not configured"))
+		return
+	}
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
@@ -148,10 +154,15 @@ type createMeetingRequest struct {
 func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
-	isAdmin, _ := p.IsUserAdmin(userID)
+	isAdmin, err := p.IsUserAdmin(userID)
+	if err != nil {
+		p.API.LogError("IsUserAdmin failed", "user_id", userID, "error", err.Error())
+		http.Error(w, "Failed to determine admin status.", http.StatusInternalServerError)
+		return
+	}
 	configured := p.IsPluginConfigured()
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"configured": configured,
 		"is_admin":   isAdmin,
 	}
@@ -169,10 +180,16 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
 	if !p.IsPluginConfigured() {
-		isAdmin, _ := p.IsUserAdmin(userID)
+		isAdmin, err := p.IsUserAdmin(userID)
+		if err != nil {
+			p.API.LogError("IsUserAdmin failed", "user_id", userID, "error", err.Error())
+			http.Error(w, "Failed to determine admin status.", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"error":    "not_configured",
 			"is_admin": isAdmin,
 		}
@@ -216,7 +233,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
-		if errors.Is(err, ErrNeedsReconnect) {
+		if errors.Is(err, pluginerrors.ErrNeedsReconnect) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			resp := map[string]string{

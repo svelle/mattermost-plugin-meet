@@ -36,10 +36,10 @@ func (m *mockPluginAPI) GetConfig() *model.Config {
 	}
 }
 
-func (m *mockPluginAPI) LogDebug(msg string, keyValuePairs ...any)  {}
-func (m *mockPluginAPI) LogInfo(msg string, keyValuePairs ...any)   {}
-func (m *mockPluginAPI) LogWarn(msg string, keyValuePairs ...any)   {}
-func (m *mockPluginAPI) LogError(msg string, keyValuePairs ...any)  { m.logged = append(m.logged, msg) }
+func (m *mockPluginAPI) LogDebug(msg string, keyValuePairs ...any) {}
+func (m *mockPluginAPI) LogInfo(msg string, keyValuePairs ...any)  {}
+func (m *mockPluginAPI) LogWarn(msg string, keyValuePairs ...any)  {}
+func (m *mockPluginAPI) LogError(msg string, keyValuePairs ...any) { m.logged = append(m.logged, msg) }
 func (m *mockPluginAPI) LoadPluginConfiguration(_ any) error {
 	return nil
 }
@@ -130,7 +130,7 @@ func setupPlugin(t *testing.T) (*Plugin, *mockPluginAPI, *mockKVStore) {
 	kv := newMockKVStore()
 
 	p := &Plugin{}
-	p.MattermostPlugin.API = api
+	p.API = api
 	p.kvstore = kv
 	p.setConfiguration(&configuration{
 		GoogleClientID:     "test-client-id",
@@ -174,7 +174,7 @@ func TestHandleConfigStatus(t *testing.T) {
 		p.router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		var resp map[string]interface{}
+		var resp map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		assert.Equal(t, true, resp["configured"])
@@ -191,11 +191,24 @@ func TestHandleConfigStatus(t *testing.T) {
 		p.router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		var resp map[string]interface{}
+		var resp map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 		assert.Equal(t, false, resp["configured"])
 		assert.Contains(t, resp["configure_url"], "admin_console")
+	})
+
+	t.Run("admin lookup failure returns 500", func(t *testing.T) {
+		p, api, _ := setupPlugin(t)
+		api.userErr = model.NewAppError("GetUser", "app.user.get", nil, "lookup failed", http.StatusInternalServerError)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/config/status", nil)
+		req.Header.Set("Mattermost-User-ID", "user1")
+		w := httptest.NewRecorder()
+		p.router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to determine admin status")
 	})
 }
 
@@ -211,10 +224,25 @@ func TestHandleCreateMeeting_NotConfigured(t *testing.T) {
 	p.router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "not_configured", resp["error"])
+}
+
+func TestHandleCreateMeeting_NotConfigured_AdminLookupFailure(t *testing.T) {
+	p, api, _ := setupPlugin(t)
+	api.userErr = model.NewAppError("GetUser", "app.user.get", nil, "lookup failed", http.StatusInternalServerError)
+	p.setConfiguration(&configuration{})
+
+	body, _ := json.Marshal(map[string]string{"channel_id": "chan1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meeting", bytes.NewReader(body))
+	req.Header.Set("Mattermost-User-ID", "admin1")
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to determine admin status")
 }
 
 func TestHandleCreateMeeting_BadRequest(t *testing.T) {
@@ -228,7 +256,8 @@ func TestHandleCreateMeeting_BadRequest(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		var resp map[string]string
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
 		assert.Contains(t, resp["error"], "Invalid request body")
 	})
 
@@ -241,7 +270,8 @@ func TestHandleCreateMeeting_BadRequest(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		var resp map[string]string
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
 		assert.Contains(t, resp["error"], "channel_id is required")
 	})
 }
@@ -273,7 +303,8 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 			MeetingCode: "test-meet",
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		err := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
 	}))
 	defer meetServer.Close()
 

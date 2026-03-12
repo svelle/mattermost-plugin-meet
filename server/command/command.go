@@ -1,11 +1,14 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
+
+	"github.com/mattermost/mattermost-plugin-meet/server/pluginerrors"
 )
 
 // MeetingStarter is the interface the command handler uses to start meetings.
@@ -112,13 +115,15 @@ func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResp
 	}
 
 	if err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
-		if err.Error() == "needs_reconnect" {
+		if errors.Is(err, pluginerrors.ErrNeedsReconnect) {
 			connectURL := c.meetingStarter.GetConnectURL()
 			return &model.CommandResponse{
 				ResponseType: model.CommandResponseTypeEphemeral,
 				Text:         fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL),
 			}
 		}
+		// NewCommandHandler always provides a client in production; tests sometimes build a
+		// partial handler directly, so keep the nil check around logging only.
 		if c.client != nil {
 			c.client.Log.Error("Failed to create meeting", "user_id", args.UserId, "error", err.Error())
 		}

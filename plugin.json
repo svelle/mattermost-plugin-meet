@@ -33,6 +33,7 @@
                 "key": "GoogleClientSecret",
                 "display_name": "Google OAuth Client Secret",
                 "type": "text",
+                "secret": true,
                 "help_text": "The Client Secret from your Google OAuth 2.0 credentials.",
                 "default": ""
             },

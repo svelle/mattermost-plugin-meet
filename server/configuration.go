@@ -4,6 +4,8 @@ import (
 	"reflect"
 
 	"github.com/pkg/errors"
+
+	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
 )
 
 type configuration struct {
@@ -64,6 +66,10 @@ func (p *Plugin) OnConfigurationChange() error {
 	}
 
 	p.setConfiguration(configuration)
+	if p.client != nil {
+		p.kvstore = kvstore.NewKVStore(p.client, configuration.EncryptionKey)
+	}
+	p.updateSettingsHeader()
 
 	return nil
 }

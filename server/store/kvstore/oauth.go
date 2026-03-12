@@ -6,17 +6,25 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	stderrors "errors"
 	"io"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/pluginapi"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
+	// #nosec G101 -- KV key prefixes are identifiers, not secrets.
 	oauthTokenPrefix = "oauth_token_"
 	oauthStatePrefix = "oauth_state_"
-	stateTTLSeconds  = 600 // 10 minutes
+	stateTTL         = 10 * time.Minute
+	pbkdf2Iterations = 100000
 )
+
+// ErrEncryptionKeyNotConfigured is returned when token encryption is unavailable.
+var ErrEncryptionKeyNotConfigured = stderrors.New("OAuth encryption key is not configured")
 
 type Client struct {
 	client        *pluginapi.Client
@@ -30,7 +38,19 @@ func NewKVStore(client *pluginapi.Client, encryptionKey string) KVStore {
 	}
 }
 
+func (kv *Client) requireEncryptionKey() error {
+	if kv.encryptionKey == "" {
+		return ErrEncryptionKeyNotConfigured
+	}
+
+	return nil
+}
+
 func (kv *Client) StoreOAuth2Token(userID string, token *OAuth2Token) error {
+	if err := kv.requireEncryptionKey(); err != nil {
+		return err
+	}
+
 	data, err := json.Marshal(token)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal token")
@@ -49,11 +69,14 @@ func (kv *Client) StoreOAuth2Token(userID string, token *OAuth2Token) error {
 }
 
 func (kv *Client) GetOAuth2Token(userID string) (*OAuth2Token, error) {
+	if err := kv.requireEncryptionKey(); err != nil {
+		return nil, err
+	}
+
 	var encrypted []byte
 	err := kv.client.KV.Get(oauthTokenPrefix+userID, &encrypted)
 	if err != nil {
-		// If the key doesn't exist or can't be unmarshalled, treat as not connected
-		return nil, nil
+		return nil, errors.Wrap(err, "failed to get token")
 	}
 	if len(encrypted) == 0 {
 		return nil, nil
@@ -61,20 +84,29 @@ func (kv *Client) GetOAuth2Token(userID string) (*OAuth2Token, error) {
 
 	data, err := decrypt(encrypted, kv.encryptionKey)
 	if err != nil {
-		// Token was stored with a different encryption key; delete it so the user can re-connect
-		_ = kv.client.KV.Delete(oauthTokenPrefix + userID)
+		kv.client.Log.Warn("Failed to decrypt stored OAuth token; deleting stale token", "user_id", userID, "error", err.Error())
+		if delErr := kv.client.KV.Delete(oauthTokenPrefix + userID); delErr != nil {
+			kv.client.Log.Warn("Failed to delete stale OAuth token after decryption failure", "user_id", userID, "error", delErr.Error())
+		}
 		return nil, nil
 	}
 
 	var token OAuth2Token
 	if err := json.Unmarshal(data, &token); err != nil {
-		_ = kv.client.KV.Delete(oauthTokenPrefix + userID)
+		kv.client.Log.Warn("Failed to unmarshal stored OAuth token; deleting stale token", "user_id", userID, "error", err.Error())
+		if delErr := kv.client.KV.Delete(oauthTokenPrefix + userID); delErr != nil {
+			kv.client.Log.Warn("Failed to delete stale OAuth token after unmarshal failure", "user_id", userID, "error", delErr.Error())
+		}
 		return nil, nil
 	}
 	return &token, nil
 }
 
 func (kv *Client) DeleteOAuth2Token(userID string) error {
+	if err := kv.requireEncryptionKey(); err != nil {
+		return err
+	}
+
 	err := kv.client.KV.Delete(oauthTokenPrefix + userID)
 	if err != nil {
 		return errors.Wrap(err, "failed to delete token")
@@ -83,7 +115,7 @@ func (kv *Client) DeleteOAuth2Token(userID string) error {
 }
 
 func (kv *Client) StoreOAuth2State(state string, userID string) error {
-	_, err := kv.client.KV.Set(oauthStatePrefix+state, []byte(userID), pluginapi.SetExpiry(stateTTLSeconds))
+	_, err := kv.client.KV.Set(oauthStatePrefix+state, []byte(userID), pluginapi.SetExpiry(stateTTL))
 	if err != nil {
 		return errors.Wrap(err, "failed to store OAuth state")
 	}
@@ -105,9 +137,18 @@ func (kv *Client) GetAndDeleteOAuth2State(state string) (string, error) {
 	return string(userID), nil
 }
 
+// deriveKey uses PBKDF2-SHA256 with a plugin-specific static salt and 100k
+// iterations to turn the configured secret into a 32-byte AES-256 key. The
+// fixed salt namespaces the derivation to this plugin, while PBKDF2 adds
+// computational cost beyond a raw hash without requiring extra persisted state.
 func deriveKey(encryptionKey string) []byte {
-	hash := sha256.Sum256([]byte(encryptionKey))
-	return hash[:]
+	return pbkdf2.Key(
+		[]byte(encryptionKey),
+		[]byte("com.mattermost.google-meet/oauth-token"),
+		pbkdf2Iterations,
+		32,
+		sha256.New,
+	)
 }
 
 func encrypt(data []byte, encryptionKey string) ([]byte, error) {

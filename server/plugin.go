@@ -44,12 +44,11 @@ func (p *Plugin) OnActivate() error {
 	p.botID = botID
 
 	config := p.getConfiguration()
-	encryptionKey := config.EncryptionKey
-	if encryptionKey == "" {
-		encryptionKey = "default-key-please-configure"
+	if config.EncryptionKey == "" {
+		p.API.LogWarn("Encryption key is not configured. Google OAuth remains unavailable until plugin setup is completed.")
 	}
 
-	p.kvstore = kvstore.NewKVStore(p.client, encryptionKey)
+	p.kvstore = kvstore.NewKVStore(p.client, config.EncryptionKey)
 
 	p.commandClient = command.NewCommandHandler(p.client, p)
 
@@ -61,12 +60,10 @@ func (p *Plugin) OnActivate() error {
 }
 
 func (p *Plugin) updateSettingsHeader() {
-	siteURL := ""
-	if cfg := p.API.GetConfig(); cfg.ServiceSettings.SiteURL != nil {
-		siteURL = *cfg.ServiceSettings.SiteURL
+	redirectURI := p.getOAuth2CallbackURL()
+	if redirectURI == "" {
+		redirectURI = "Mattermost Site URL must be configured before the redirect URI can be generated."
 	}
-
-	redirectURI := fmt.Sprintf("%s/plugins/%s/api/v1/oauth/callback", siteURL, manifest.Id)
 
 	header := fmt.Sprintf(
 		"**Setup instructions:**\n"+
@@ -77,9 +74,7 @@ func (p *Plugin) updateSettingsHeader() {
 		redirectURI,
 	)
 
-	if manifest.SettingsSchema != nil {
-		manifest.SettingsSchema.Header = header
-	}
+	setManifestSettingsHeader(header)
 }
 
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
