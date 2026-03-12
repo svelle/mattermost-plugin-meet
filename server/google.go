@@ -1,26 +1,23 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
 	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
 )
 
 const (
-	googleAuthURL     = "https://accounts.google.com/o/oauth2/v2/auth"
-	googleTokenURL    = "https://oauth2.googleapis.com/token"
-	googleCalendarURL = "https://www.googleapis.com/calendar/v3"
-	calendarScope     = "https://www.googleapis.com/auth/calendar.events"
+	googleAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
+	googleTokenURL = "https://oauth2.googleapis.com/token"
+	googleMeetURL  = "https://meet.googleapis.com/v2"
+	meetScope      = "https://www.googleapis.com/auth/meetings.space.created"
 )
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -39,7 +36,7 @@ func (p *Plugin) buildAuthURL(state string) string {
 		"client_id":     {config.GoogleClientID},
 		"redirect_uri":  {redirectURI},
 		"response_type": {"code"},
-		"scope":         {calendarScope},
+		"scope":         {meetScope},
 		"access_type":   {"offline"},
 		"prompt":        {"consent"},
 		"state":         {state},
@@ -166,78 +163,15 @@ func (p *Plugin) getValidToken(userID string) (*kvstore.OAuth2Token, error) {
 	return token, nil
 }
 
-type calendarEvent struct {
-	Summary        string          `json:"summary"`
-	Start          *eventDateTime  `json:"start"`
-	End            *eventDateTime  `json:"end"`
-	ConferenceData *conferenceData `json:"conferenceData"`
+type meetSpaceResponse struct {
+	Name       string `json:"name"`
+	MeetingURI string `json:"meetingUri"`
+	MeetingCode string `json:"meetingCode"`
 }
 
-type eventDateTime struct {
-	DateTime string `json:"dateTime"`
-	TimeZone string `json:"timeZone"`
-}
-
-type conferenceData struct {
-	CreateRequest *createConferenceRequest `json:"createRequest"`
-}
-
-type createConferenceRequest struct {
-	RequestID             string                 `json:"requestId"`
-	ConferenceSolutionKey *conferenceSolutionKey `json:"conferenceSolutionKey"`
-}
-
-type conferenceSolutionKey struct {
-	Type string `json:"type"`
-}
-
-type calendarEventResponse struct {
-	HangoutLink    string                      `json:"hangoutLink"`
-	ConferenceData *conferenceDataResponse      `json:"conferenceData"`
-}
-
-type conferenceDataResponse struct {
-	EntryPoints []entryPoint `json:"entryPoints"`
-}
-
-type entryPoint struct {
-	EntryPointType string `json:"entryPointType"`
-	URI            string `json:"uri"`
-}
-
-func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, topic string) (string, error) {
-	if topic == "" {
-		topic = "Google Meet Meeting"
-	}
-
-	now := time.Now()
-	event := calendarEvent{
-		Summary: topic,
-		Start: &eventDateTime{
-			DateTime: now.Format(time.RFC3339),
-			TimeZone: "UTC",
-		},
-		End: &eventDateTime{
-			DateTime: now.Add(1 * time.Hour).Format(time.RFC3339),
-			TimeZone: "UTC",
-		},
-		ConferenceData: &conferenceData{
-			CreateRequest: &createConferenceRequest{
-				RequestID: uuid.New().String(),
-				ConferenceSolutionKey: &conferenceSolutionKey{
-					Type: "hangoutsMeet",
-				},
-			},
-		},
-	}
-
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to marshal event")
-	}
-
-	reqURL := googleCalendarURL + "/calendars/primary/events?conferenceDataVersion=1"
-	req, err := http.NewRequest(http.MethodPost, reqURL, bytes.NewReader(eventJSON))
+func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, _ string) (string, error) {
+	reqURL := googleMeetURL + "/spaces"
+	req, err := http.NewRequest(http.MethodPost, reqURL, nil)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create request")
 	}
@@ -247,7 +181,7 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, topic string) (string
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to create calendar event")
+		return "", errors.Wrap(err, "failed to create meeting space")
 	}
 	defer resp.Body.Close()
 
@@ -257,26 +191,17 @@ func (p *Plugin) createMeeting(token *kvstore.OAuth2Token, topic string) (string
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("calendar API returned status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("Meet API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var eventResp calendarEventResponse
-	if err := json.Unmarshal(body, &eventResp); err != nil {
-		return "", errors.Wrap(err, "failed to parse calendar response")
+	var space meetSpaceResponse
+	if err := json.Unmarshal(body, &space); err != nil {
+		return "", errors.Wrap(err, "failed to parse Meet API response")
 	}
 
-	// Try hangoutLink first, then conference data entry points
-	if eventResp.HangoutLink != "" {
-		return eventResp.HangoutLink, nil
+	if space.MeetingURI == "" {
+		return "", errors.New("no meeting URI in Meet API response")
 	}
 
-	if eventResp.ConferenceData != nil {
-		for _, ep := range eventResp.ConferenceData.EntryPoints {
-			if ep.EntryPointType == "video" && strings.Contains(ep.URI, "meet.google.com") {
-				return ep.URI, nil
-			}
-		}
-	}
-
-	return "", errors.New("no Google Meet link found in calendar event response")
+	return space.MeetingURI, nil
 }

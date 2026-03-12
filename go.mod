@@ -3,7 +3,6 @@ module github.com/mattermost/mattermost-plugin-meet
 go 1.25
 
 require (
-	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/mattermost/mattermost/server/public v0.1.21
 	github.com/pkg/errors v0.9.1
@@ -12,6 +11,7 @@ require (
 
 require (
 	github.com/beevik/etree v1.6.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a // indirect
