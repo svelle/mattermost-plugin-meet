@@ -17,6 +17,18 @@ const GoogleMeetIcon = () => (
     </svg>
 );
 
+const doFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    return fetch(url, {
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...options.headers,
+        },
+        ...options,
+    });
+};
+
 export default class Plugin {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public async initialize(registry: PluginRegistry, store: Store<GlobalState>) {
@@ -24,7 +36,7 @@ export default class Plugin {
         let configured = false;
         let isAdmin = false;
         try {
-            const statusResp = await fetch(`/plugins/${manifest.id}/api/v1/config/status`);
+            const statusResp = await doFetch(`/plugins/${manifest.id}/api/v1/config/status`);
             if (statusResp.ok) {
                 const status = await statusResp.json();
                 configured = status.configured;
@@ -43,11 +55,8 @@ export default class Plugin {
         registry.registerChannelHeaderButtonAction(
             <GoogleMeetIcon/>,
             async (channel: {id: string}) => {
-                const resp = await fetch(`/plugins/${manifest.id}/api/v1/meeting`, {
+                const resp = await doFetch(`/plugins/${manifest.id}/api/v1/meeting`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
                     body: JSON.stringify({channel_id: channel.id}),
                 });
 
