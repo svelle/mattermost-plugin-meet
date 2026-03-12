@@ -37,7 +37,7 @@ func (p *Plugin) OnActivate() error {
 		Username:    "google-meet",
 		DisplayName: "Google Meet",
 		Description: "Created by the Google Meet plugin.",
-	})
+	}, pluginapi.ProfileImagePath("assets/profile.png"))
 	if err != nil {
 		return fmt.Errorf("failed to ensure bot: %w", err)
 	}
