@@ -24,6 +24,7 @@ type Plugin struct {
 	commandClient command.Command
 
 	router *mux.Router
+	botID  string
 
 	configurationLock sync.RWMutex
 	configuration     *configuration
@@ -31,6 +32,16 @@ type Plugin struct {
 
 func (p *Plugin) OnActivate() error {
 	p.client = pluginapi.NewClient(p.API, p.Driver)
+
+	botID, err := p.client.Bot.EnsureBot(&model.Bot{
+		Username:    "google-meet",
+		DisplayName: "Google Meet",
+		Description: "Created by the Google Meet plugin.",
+	}, pluginapi.ProfileImagePath("assets/icon.svg"))
+	if err != nil {
+		return fmt.Errorf("failed to ensure bot: %w", err)
+	}
+	p.botID = botID
 
 	config := p.getConfiguration()
 	encryptionKey := config.EncryptionKey

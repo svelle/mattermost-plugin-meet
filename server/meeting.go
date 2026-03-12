@@ -36,30 +36,26 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		return errors.Wrap(appErr, "failed to get user")
 	}
 
-	displayName := user.GetDisplayName(model.ShowNicknameFullName)
-
 	message := fmt.Sprintf("@%s started a new meeting", user.Username)
 	if topic != "" {
 		message = fmt.Sprintf("@%s started a new meeting: **%s**", user.Username, topic)
 	}
 
 	post := &model.Post{
-		UserId:    userID,
+		UserId:    p.botID,
 		ChannelId: channelID,
 		Message:   message,
 		Type:      "custom_google_meet",
 		Props: model.StringInterface{
-			"meeting_link":    meetURL,
-			"meeting_topic":   topic,
-			"from_webhook":    "true",
-			"override_username": displayName,
+			"meeting_link":  meetURL,
+			"meeting_topic": topic,
 			"attachments": []*model.SlackAttachment{
 				{
-					Fallback: fmt.Sprintf("Join Google Meet: %s", meetURL),
-					Title:    "Join Google Meet",
+					Fallback:  fmt.Sprintf("Join Google Meet: %s", meetURL),
+					Title:     "Join Google Meet",
 					TitleLink: meetURL,
-					Color:    "#00897B",
-					Text:     fmt.Sprintf(":video_camera: [Join Google Meet](%s)", meetURL),
+					Color:     "#00832d",
+					Text:      fmt.Sprintf(":video_camera: [Join Google Meet](%s)", meetURL),
 				},
 			},
 		},
