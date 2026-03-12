@@ -19,7 +19,7 @@
         "bundle_path": "webapp/dist/main.js"
     },
     "settings_schema": {
-        "header": "Configure the Google Meet plugin. You need to create a Google OAuth 2.0 Client ID in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). The redirect URI will be shown here once the plugin is activated.",
+        "header": "**Setup instructions:** 1) Enable the [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com). 2) Create an [OAuth 2.0 Client ID](https://console.cloud.google.com/apis/credentials) (Web application type). 3) The redirect URI will be shown here once the plugin is activated. 4) Enter the Client ID and Client Secret below.",
         "footer": "",
         "settings": [
             {
