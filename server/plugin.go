@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -45,11 +46,12 @@ func (p *Plugin) OnActivate() error {
 	p.botID = botID
 
 	config := p.getConfiguration()
-	if config.EncryptionKey == "" {
-		p.API.LogWarn("Encryption key is not configured. Google OAuth remains unavailable until plugin setup is completed.")
+	if p.IsPluginConfigured() {
+		p.kvstore = kvstore.NewKVStore(p.client, config.EncryptionKey)
+	} else {
+		p.kvstore = nil
+		p.API.LogWarn("Plugin configuration is incomplete. Google OAuth remains unavailable until plugin setup is completed.")
 	}
-
-	p.kvstore = kvstore.NewKVStore(p.client, config.EncryptionKey)
 
 	p.commandClient = command.NewCommandHandler(p.client, p)
 
@@ -58,6 +60,18 @@ func (p *Plugin) OnActivate() error {
 	p.updateSettingsHeader()
 
 	return nil
+}
+
+func (p *Plugin) getOAuthKVStore() (kvstore.KVStore, error) {
+	if !p.IsPluginConfigured() {
+		return nil, p.getConfiguration().IsValid()
+	}
+
+	if p.kvstore == nil {
+		return nil, errors.New("OAuth storage is not initialized")
+	}
+
+	return p.kvstore, nil
 }
 
 func (p *Plugin) getSiteURL() string {

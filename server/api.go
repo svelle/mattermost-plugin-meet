@@ -83,13 +83,19 @@ func (p *Plugin) handleOAuthConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	store, err := p.getOAuthKVStore()
+	if err != nil {
+		p.handleError(w, err)
+		return
+	}
+
 	state, err := generateState()
 	if err != nil {
 		p.handleError(w, fmt.Errorf("failed to generate state: %w", err))
 		return
 	}
 
-	if err := p.kvstore.StoreOAuth2State(state, userID); err != nil {
+	if err := store.StoreOAuth2State(state, userID); err != nil {
 		p.handleError(w, fmt.Errorf("failed to store state: %w", err))
 		return
 	}
@@ -112,7 +118,13 @@ func (p *Plugin) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := p.kvstore.GetAndDeleteOAuth2State(state)
+	store, err := p.getOAuthKVStore()
+	if err != nil {
+		p.handleError(w, err)
+		return
+	}
+
+	userID, err := store.GetAndDeleteOAuth2State(state)
 	if err != nil {
 		p.handleErrorWithCode(w, http.StatusBadRequest, "Invalid or expired state. Please try connecting again.", err)
 		return
@@ -124,7 +136,7 @@ func (p *Plugin) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := p.kvstore.StoreOAuth2Token(userID, token); err != nil {
+	if err := store.StoreOAuth2Token(userID, token); err != nil {
 		p.handleError(w, fmt.Errorf("failed to store token: %w", err))
 		return
 	}

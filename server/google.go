@@ -173,7 +173,12 @@ func (p *Plugin) refreshToken(token *kvstore.OAuth2Token) (*kvstore.OAuth2Token,
 }
 
 func (p *Plugin) getValidToken(userID string) (*kvstore.OAuth2Token, error) {
-	token, err := p.kvstore.GetOAuth2Token(userID)
+	store, err := p.getOAuthKVStore()
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := store.GetOAuth2Token(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +192,7 @@ func (p *Plugin) getValidToken(userID string) (*kvstore.OAuth2Token, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to refresh expired token: %w", err)
 		}
-		if err := p.kvstore.StoreOAuth2Token(userID, token); err != nil {
+		if err := store.StoreOAuth2Token(userID, token); err != nil {
 			p.API.LogError("Failed to store refreshed token", "error", err.Error())
 		}
 	}

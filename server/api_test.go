@@ -348,6 +348,24 @@ func TestHandleOAuthCallback_MissingParams(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestHandleOAuthCallback_NotConfigured(t *testing.T) {
+	p, api, _ := setupPlugin(t)
+	p.setConfiguration(&configuration{})
+	p.kvstore = nil
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/oauth/callback?code=test-code&state=test-state", nil)
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var resp map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "An internal error has occurred. Check app server logs for details.", resp["error"])
+	require.Len(t, api.logged, 1)
+}
+
 func TestGenerateState(t *testing.T) {
 	state1, err := generateState()
 	require.NoError(t, err)

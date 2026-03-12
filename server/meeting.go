@@ -28,7 +28,10 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	if err != nil {
 		if errors.Is(err, ErrInsufficientScopes) {
 			// Token has old scopes — delete it so the user re-authenticates with the correct scope
-			if delErr := p.kvstore.DeleteOAuth2Token(userID); delErr != nil {
+			store, storeErr := p.getOAuthKVStore()
+			if storeErr != nil {
+				p.API.LogWarn("OAuth storage unavailable while deleting token after insufficient scopes", "user_id", userID, "error", storeErr.Error())
+			} else if delErr := store.DeleteOAuth2Token(userID); delErr != nil {
 				p.API.LogWarn("Failed to delete OAuth token after insufficient scopes", "user_id", userID, "error", delErr.Error())
 			}
 			return command.ErrNeedsReconnect
@@ -66,7 +69,12 @@ func (p *Plugin) GetConnectURL() string {
 }
 
 func (p *Plugin) IsUserConnected(userID string) (bool, error) {
-	token, err := p.kvstore.GetOAuth2Token(userID)
+	store, err := p.getOAuthKVStore()
+	if err != nil {
+		return false, err
+	}
+
+	token, err := store.GetOAuth2Token(userID)
 	if err != nil {
 		return false, err
 	}
