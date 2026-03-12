@@ -4,6 +4,9 @@ Start and join Google Meet meetings from Mattermost.
 
 This plugin adds a `/meet` slash command and a channel header button that let users create a Google Meet link from within Mattermost. Meetings are created using the Google account that each user connects through OAuth.
 
+<img width="1519" height="1138" alt="image" src="https://github.com/user-attachments/assets/a96a9b40-a2b7-4aae-a280-ec14c222dda9" />
+
+
 ## Features
 
 - Start a Google Meet meeting with `/meet` or the channel header button.
