@@ -43,6 +43,13 @@
                 "type": "generated",
                 "help_text": "A secret key used to encrypt OAuth tokens stored in the database. Regenerating this key will invalidate all existing user connections.",
                 "default": ""
+            },
+            {
+                "key": "RestrictMeetingCreation",
+                "display_name": "Restrict Meeting Creation",
+                "type": "bool",
+                "help_text": "Restrict users from creating meetings in public channels.",
+                "default": false
             }
         ]
     }

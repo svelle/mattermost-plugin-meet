@@ -270,6 +270,10 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 			p.handleErrorWithCode(w, http.StatusForbidden, "You do not have permission to create posts in this channel.", nil)
 			return
 		}
+		if errors.Is(err, command.ErrPublicChannelRestricted) {
+			p.handleErrorWithCode(w, http.StatusForbidden, "Meeting creation is restricted in public channels.", nil)
+			return
+		}
 		p.handleError(w, fmt.Errorf("failed to create meeting: %w", err))
 		return
 	}

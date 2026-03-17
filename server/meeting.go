@@ -17,6 +17,16 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		return ErrNoChannelPermission
 	}
 
+	if p.getConfiguration().RestrictMeetingCreation {
+		channel, appErr := p.API.GetChannel(channelID)
+		if appErr != nil {
+			return fmt.Errorf("failed to get channel: %w", appErr)
+		}
+		if channel.Type == model.ChannelTypeOpen {
+			return command.ErrPublicChannelRestricted
+		}
+	}
+
 	p.API.LogDebug("StartMeeting: getting valid token", "user_id", userID)
 	token, err := p.getValidToken(userID)
 	if err != nil {

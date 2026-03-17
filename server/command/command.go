@@ -126,6 +126,12 @@ func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResp
 				Text:         fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL),
 			}
 		}
+		if errors.Is(err, ErrPublicChannelRestricted) {
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         "Meeting creation is restricted in public channels. Try a private channel or direct message instead.",
+			}
+		}
 		// NewCommandHandler always sets c.client, but tests may construct Handler directly.
 		if c.client != nil {
 			c.client.Log.Error("Failed to create meeting", "user_id", args.UserId, "error", err.Error())

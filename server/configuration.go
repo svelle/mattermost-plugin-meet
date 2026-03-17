@@ -9,9 +9,10 @@ import (
 )
 
 type configuration struct {
-	GoogleClientID     string `json:"GoogleClientID"`
-	GoogleClientSecret string `json:"GoogleClientSecret"`
-	EncryptionKey      string `json:"EncryptionKey"`
+	GoogleClientID          string `json:"GoogleClientID"`
+	GoogleClientSecret      string `json:"GoogleClientSecret"`
+	EncryptionKey           string `json:"EncryptionKey"`
+	RestrictMeetingCreation bool   `json:"RestrictMeetingCreation"`
 }
 
 func (c *configuration) Clone() *configuration {

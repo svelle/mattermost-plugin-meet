@@ -19,13 +19,15 @@ import (
 // mockPluginAPI implements the plugin.API interface methods we need for testing.
 type mockPluginAPI struct {
 	plugin.API
-	siteURL string
-	user    *model.User
-	userErr *model.AppError
-	post    *model.Post
-	postErr *model.AppError
-	logged  []string
-	hasPerm bool
+	siteURL    string
+	user       *model.User
+	userErr    *model.AppError
+	channel    *model.Channel
+	channelErr *model.AppError
+	post       *model.Post
+	postErr    *model.AppError
+	logged     []string
+	hasPerm    bool
 }
 
 func (m *mockPluginAPI) GetConfig() *model.Config {
@@ -52,6 +54,16 @@ func (m *mockPluginAPI) GetUser(userID string) (*model.User, *model.AppError) {
 		return m.user, nil
 	}
 	return &model.User{}, nil
+}
+
+func (m *mockPluginAPI) GetChannel(channelID string) (*model.Channel, *model.AppError) {
+	if m.channelErr != nil {
+		return nil, m.channelErr
+	}
+	if m.channel != nil {
+		return m.channel, nil
+	}
+	return &model.Channel{Id: channelID, Type: model.ChannelTypePrivate}, nil
 }
 
 func (m *mockPluginAPI) CreatePost(post *model.Post) (*model.Post, *model.AppError) {
@@ -391,6 +403,36 @@ func TestHandleCreateMeeting_NoChannelPermission(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Contains(t, resp["error"], "permission")
+}
+
+func TestHandleCreateMeeting_PublicChannelRestricted(t *testing.T) {
+	p, api, kv := setupPlugin(t)
+	api.hasPerm = true
+	api.channel = &model.Channel{Id: "chan1", Type: model.ChannelTypeOpen}
+	p.setConfiguration(&configuration{
+		GoogleClientID:          "test-client-id",
+		GoogleClientSecret:      "test-client-secret",
+		EncryptionKey:           "test-encryption-key",
+		RestrictMeetingCreation: true,
+	})
+	kv.tokens["user1"] = &kvstore.OAuth2Token{
+		AccessToken:  "valid-token",
+		TokenType:    "Bearer",
+		RefreshToken: "refresh",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+
+	body, _ := json.Marshal(map[string]string{"channel_id": "chan1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meeting", bytes.NewReader(body))
+	req.Header.Set("Mattermost-User-ID", "user1")
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	var resp map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Contains(t, resp["error"], "restricted in public channels")
 }
 
 func TestHandleErrorWithCode(t *testing.T) {

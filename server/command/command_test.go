@@ -211,6 +211,24 @@ func TestExecuteMeetCommand_NeedsReconnect(t *testing.T) {
 	assert.Contains(t, resp.Text, "http://localhost/connect")
 }
 
+func TestExecuteMeetCommand_PublicChannelRestricted(t *testing.T) {
+	mock := &mockMeetingStarter{
+		configured: true,
+		connected:  true,
+		startErr:   ErrPublicChannelRestricted,
+	}
+	handler := &Handler{meetingStarter: mock}
+
+	resp, err := handler.Handle(&model.CommandArgs{
+		Command:   "/meet",
+		UserId:    "user1",
+		ChannelId: "chan1",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, resp.Text, "restricted in public channels")
+	assert.Contains(t, resp.Text, "private channel or direct message")
+}
+
 func TestExecuteMeetCommand_StartMeetingError(t *testing.T) {
 	mock := &mockMeetingStarter{
 		configured: true,
