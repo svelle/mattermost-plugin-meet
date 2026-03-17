@@ -2,6 +2,10 @@ import type {Store} from 'redux';
 
 import type {GlobalState} from '@mattermost/types/store';
 
+// The plugin registry does not expose the platform action constant, so keep a
+// local fallback here instead of scattering the string literal across helpers.
+const RECEIVED_NEW_POST = 'RECEIVED_NEW_POST';
+
 export const postEphemeralMessage = (store: Store<GlobalState>, channelID: string, message: string) => {
     const currentUserId = store.getState().entities.users.currentUserId;
     const timestamp = Date.now();
@@ -12,7 +16,7 @@ export const postEphemeralMessage = (store: Store<GlobalState>, channelID: strin
     // post into Redux. This is intentionally client-only, is not persisted to the
     // server, only appears in the current session, and may disappear on refresh.
     store.dispatch({
-        type: 'RECEIVED_NEW_POST',
+        type: RECEIVED_NEW_POST,
         data: {
             id: `meet_message_${timestamp}_${randomSuffix}`,
             create_at: timestamp,
