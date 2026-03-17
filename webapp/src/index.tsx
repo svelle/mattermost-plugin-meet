@@ -54,9 +54,7 @@ export default class Plugin {
                     }
                 };
 
-                startMeeting().catch(() => {
-                    postEphemeralMessage(store, channel.id, 'Unable to start a Google Meet meeting. Please try again.');
-                });
+                startMeeting();
             },
             'Start Google Meet',
             'Start a Google Meet meeting',
