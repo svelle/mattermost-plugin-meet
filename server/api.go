@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/mattermost/mattermost/server/public/plugin"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/command"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/command"
 )
 
 func (p *Plugin) initRouter() *mux.Router {

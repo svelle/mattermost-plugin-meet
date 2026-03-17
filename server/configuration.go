@@ -5,7 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
 type configuration struct {

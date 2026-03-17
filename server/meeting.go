@@ -6,7 +6,7 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/command"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/command"
 )
 
 // ErrNoChannelPermission indicates the user cannot create posts in the channel.

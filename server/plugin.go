@@ -12,8 +12,8 @@ import (
 	"github.com/mattermost/mattermost/server/public/plugin"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/command"
-	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/command"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.

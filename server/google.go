@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
 // ErrInsufficientScopes indicates the token lacks the required OAuth scope.
