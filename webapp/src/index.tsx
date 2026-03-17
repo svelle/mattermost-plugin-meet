@@ -22,9 +22,8 @@ export default class Plugin {
             const status = await getConfigStatus();
             configured = status.configured;
             isAdmin = status.is_admin;
-        } catch (error) {
+        } catch {
             // Keep the safe default when config status cannot be determined.
-            console.warn('Failed to load Google Meet plugin config status', error);
         }
 
         registry.registerPostTypeComponent('custom_google_meet', PostTypeGoogleMeet);
