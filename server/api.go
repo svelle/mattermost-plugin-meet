@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
 
 	"github.com/mattermost/mattermost-plugin-google-meet/server/command"
@@ -81,6 +82,33 @@ func addConfigureDetails(resp map[string]any, configureURL string) {
 	}
 
 	resp["configure_help"] = "Mattermost Site URL must be configured before the System Console link is available."
+}
+
+func writeJSONResponse(w http.ResponseWriter, code int, resp any, api plugin.API) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		api.LogError("Failed to encode response", "error", err.Error())
+	}
+}
+
+func (p *Plugin) sendMeetingEphemeralResponse(w http.ResponseWriter, userID, channelID, message, reason string) {
+	postUserID := userID
+	if p.botID != "" {
+		postUserID = p.botID
+	}
+
+	p.API.SendEphemeralPost(userID, &model.Post{
+		UserId:    postUserID,
+		ChannelId: channelID,
+		Message:   message,
+		Type:      model.PostTypeEphemeral,
+	})
+
+	writeJSONResponse(w, http.StatusOK, map[string]string{
+		"status": "handled",
+		"reason": reason,
+	}, p.API)
 }
 
 func (p *Plugin) handleOAuthConnect(w http.ResponseWriter, r *http.Request) {
@@ -201,28 +229,6 @@ func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
 func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
 
-	if !p.IsPluginConfigured() {
-		isAdmin, err := p.IsUserAdmin(userID)
-		if err != nil {
-			// Degrade to non-admin so unconfigured users still get a stable JSON response.
-			p.API.LogError("Failed to check admin status for meeting creation", "user_id", userID, "error", err.Error())
-			isAdmin = false
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		resp := map[string]any{
-			"error":    "not_configured",
-			"is_admin": isAdmin,
-		}
-		if isAdmin {
-			addConfigureDetails(resp, p.GetPluginConfigureURL())
-		}
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			p.API.LogError("Failed to encode response", "error", err.Error())
-		}
-		return
-	}
-
 	var req createMeetingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		p.handleErrorWithCode(w, http.StatusBadRequest, "Invalid request body.", err)
@@ -234,56 +240,68 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !p.IsPluginConfigured() {
+		isAdmin, err := p.IsUserAdmin(userID)
+		if err != nil {
+			p.API.LogError("Failed to check admin status for meeting creation", "user_id", userID, "error", err.Error())
+			p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, "The Google Meet plugin is not configured. Please contact your system administrator.", "not_configured")
+			return
+		}
+
+		message := "The Google Meet plugin is not configured. Please contact your system administrator."
+		if isAdmin {
+			if configureURL := p.GetPluginConfigureURL(); configureURL != "" {
+				message = fmt.Sprintf("The Google Meet plugin is not configured. [Configure it in the System Console](%s).", configureURL)
+			} else {
+				message = "The Google Meet plugin is not configured. Mattermost Site URL must be configured before the System Console link is available."
+			}
+		}
+
+		p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, message, "not_configured")
+		return
+	}
+
 	connected, err := p.IsUserConnected(userID)
 	if err != nil {
-		p.handleError(w, fmt.Errorf("failed to check connection status: %w", err))
+		p.API.LogError("Failed to check connection status", "user_id", userID, "channel_id", req.ChannelID, "error", err.Error())
+		p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, "Failed to check Google connection status. Please try again.", "connection_check_failed")
 		return
 	}
 
 	if !connected {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		resp := map[string]string{
-			"error":       "not_connected",
-			"connect_url": p.GetConnectURL(),
+		connectURL := p.GetConnectURL()
+		message := "You need to connect your Google account first."
+		if connectURL != "" {
+			message = fmt.Sprintf("You need to connect your Google account first. [Click here to connect](%s).", connectURL)
 		}
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			p.API.LogError("Failed to encode response", "error", err.Error())
-		}
+		p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, message, "not_connected")
 		return
 	}
 
 	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
 		if errors.Is(err, command.ErrNeedsReconnect) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			resp := map[string]string{
-				"error":       "not_connected",
-				"connect_url": p.GetConnectURL(),
+			connectURL := p.GetConnectURL()
+			message := "Your Google account needs to be reconnected."
+			if connectURL != "" {
+				message = fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL)
 			}
-			if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
-				p.API.LogError("Failed to encode response", "error", encErr.Error())
-			}
+			p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, message, "needs_reconnect")
 			return
 		}
 		if errors.Is(err, ErrNoChannelPermission) {
-			p.handleErrorWithCode(w, http.StatusForbidden, "You do not have permission to create posts in this channel.", nil)
+			p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, "You do not have permission to create posts in this channel.", "permission_denied")
 			return
 		}
 		if errors.Is(err, command.ErrPublicChannelRestricted) {
-			p.handleErrorWithCode(w, http.StatusForbidden, "Meeting creation is restricted in public channels.", nil)
+			p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, "Meeting creation is restricted in public channels.", "public_channel_restricted")
 			return
 		}
-		p.handleError(w, fmt.Errorf("failed to create meeting: %w", err))
+		p.API.LogError("Failed to create meeting", "user_id", userID, "channel_id", req.ChannelID, "error", err.Error())
+		p.sendMeetingEphemeralResponse(w, userID, req.ChannelID, "Failed to create meeting. Please try again or check the server logs.", "meeting_failed")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	resp := map[string]string{"status": "ok"}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		p.API.LogError("Failed to encode response", "error", err.Error())
-	}
+	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "ok"}, p.API)
 }
 
 func generateState() (string, error) {
