@@ -9,6 +9,8 @@ export interface ConfigStatusResponse {
 export interface CreateMeetingResponse {
     status?: string;
     reason?: string;
+    message?: string;
+    error?: string;
 }
 
 const doFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
@@ -59,7 +61,11 @@ export const createMeeting = async (channelID: string): Promise<CreateMeetingRes
     }
 
     if (!resp.ok) {
-        throw new Error(`Failed to start a Google Meet meeting (HTTP ${resp.status}). Please try again.`);
+        const serverContext = data.reason || data.message || data.error;
+        const message = serverContext ?
+            `Failed to start a Google Meet meeting (HTTP ${resp.status}): ${serverContext}. Please try again.` :
+            `Failed to start a Google Meet meeting (HTTP ${resp.status}). Please try again.`;
+        throw new Error(message);
     }
 
     return data;
