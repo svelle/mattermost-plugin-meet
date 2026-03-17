@@ -60,6 +60,28 @@ const PostTypeGoogleMeet = ({post, theme}: PostTypeGoogleMeetProps) => {
 
     const preText = renderMarkdown(post.message);
     const title = meetingTopic ? renderMarkdown(meetingTopic) : 'Google Meet';
+    const meetingActions = meetingLink ? (
+        <>
+            <span>
+                {'Meeting URL: '}
+                <ExternalLink href={meetingLink}>
+                    {meetingLink}
+                </ExternalLink>
+            </span>
+            <div>
+                <div style={style.body}>
+                    <ExternalLink
+                        className='btn btn-primary'
+                        style={style.button}
+                        href={meetingLink}
+                    >
+                        <VideoCameraIcon style={style.buttonIcon}/>
+                        {'JOIN MEETING'}
+                    </ExternalLink>
+                </div>
+            </div>
+        </>
+    ) : null;
 
     return (
         <div className='attachment attachment--pretext'>
@@ -77,24 +99,7 @@ const PostTypeGoogleMeet = ({post, theme}: PostTypeGoogleMeetProps) => {
                     >
                         {title}
                     </h5>
-                    <span>
-                        {'Meeting URL: '}
-                        <ExternalLink href={meetingLink}>
-                            {meetingLink}
-                        </ExternalLink>
-                    </span>
-                    <div>
-                        <div style={style.body}>
-                            <ExternalLink
-                                className='btn btn-primary'
-                                style={style.button}
-                                href={meetingLink}
-                            >
-                                <VideoCameraIcon style={style.buttonIcon}/>
-                                {'JOIN MEETING'}
-                            </ExternalLink>
-                        </div>
-                    </div>
+                    {meetingActions}
                 </div>
             </div>
         </div>
