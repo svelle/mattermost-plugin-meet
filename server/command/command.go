@@ -31,12 +31,16 @@ type Command interface {
 const meetCommandTrigger = "meet"
 
 func NewCommandHandler(client *pluginapi.Client, meetingStarter MeetingStarter) Command {
+	autocompleteData := model.NewAutocompleteData(meetCommandTrigger, "", "Google Meet commands")
+	autocompleteData.AddCommand(model.NewAutocompleteData("start", "[topic]", "Start a Google Meet meeting with an optional topic"))
+	autocompleteData.AddCommand(model.NewAutocompleteData("help", "", "Show Google Meet command help"))
+
 	err := client.SlashCommand.Register(&model.Command{
 		Trigger:          meetCommandTrigger,
 		AutoComplete:     true,
-		AutoCompleteDesc: "Start a Google Meet meeting",
-		AutoCompleteHint: "[topic]",
-		AutocompleteData: model.NewAutocompleteData(meetCommandTrigger, "[topic]", "Start a Google Meet meeting with an optional topic"),
+		AutoCompleteDesc: "Google Meet commands",
+		AutoCompleteHint: "start [topic]",
+		AutocompleteData: autocompleteData,
 	})
 	if err != nil {
 		client.Log.Error("Failed to register command", "error", err)
@@ -58,7 +62,17 @@ func (c *Handler) Handle(args *model.CommandArgs) (*model.CommandResponse, error
 	trigger := strings.TrimPrefix(fields[0], "/")
 	switch trigger {
 	case meetCommandTrigger:
-		return c.executeMeetCommand(args), nil
+		if len(fields) == 1 {
+			return c.executeMeetStartCommand(args, nil), nil
+		}
+		switch fields[1] {
+		case "help":
+			return c.executeMeetHelpCommand(), nil
+		case "start":
+			return c.executeMeetStartCommand(args, fields[2:]), nil
+		default:
+			return c.executeMeetStartCommand(args, fields[1:]), nil
+		}
 	default:
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
@@ -67,7 +81,19 @@ func (c *Handler) Handle(args *model.CommandArgs) (*model.CommandResponse, error
 	}
 }
 
-func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResponse {
+func (c *Handler) executeMeetHelpCommand() *model.CommandResponse {
+	return &model.CommandResponse{
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text: strings.Join([]string{
+			"Google Meet commands:",
+			"- `/meet start [topic]` starts a meeting with an optional topic.",
+			"- `/meet help` shows this help message.",
+			"- `/meet [topic]` is still supported for backward compatibility.",
+		}, "\n"),
+	}
+}
+
+func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields []string) *model.CommandResponse {
 	if !c.meetingStarter.IsPluginConfigured() {
 		isAdmin, err := c.meetingStarter.IsUserAdmin(args.UserId)
 		if err != nil {
@@ -111,12 +137,7 @@ func (c *Handler) executeMeetCommand(args *model.CommandArgs) *model.CommandResp
 		}
 	}
 
-	// Extract topic from command arguments
-	topic := ""
-	fields := strings.Fields(args.Command)
-	if len(fields) > 1 {
-		topic = strings.Join(fields[1:], " ")
-	}
+	topic := strings.Join(topicFields, " ")
 
 	if err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
 		if errors.Is(err, ErrNeedsReconnect) {

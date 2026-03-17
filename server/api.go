@@ -156,7 +156,7 @@ func (p *Plugin) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 <head><title>Google Meet - Connected</title></head>
 <body>
 <h2>Successfully connected to Google!</h2>
-<p>You can close this window and return to Mattermost. Use <code>/meet</code> to start a meeting.</p>
+<p>You can close this window and return to Mattermost. Use <code>/meet start</code> to start a meeting.</p>
 <script>
 setTimeout(function() { window.close(); }, 3000);
 </script>

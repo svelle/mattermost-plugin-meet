@@ -162,6 +162,19 @@ func TestExecuteMeetCommand_ConnectionCheckError(t *testing.T) {
 	assert.Contains(t, resp.Text, "Failed to check Google connection status")
 }
 
+func TestExecuteMeetCommand_Help(t *testing.T) {
+	mock := &mockMeetingStarter{configured: true, connected: true}
+	handler := &Handler{meetingStarter: mock}
+
+	resp, err := handler.Handle(&model.CommandArgs{
+		Command: "/meet help",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, resp.Text, "/meet start [topic]")
+	assert.Contains(t, resp.Text, "/meet help")
+	assert.Empty(t, mock.startedMeeting.userID)
+}
+
 func TestExecuteMeetCommand_Success(t *testing.T) {
 	mock := &mockMeetingStarter{configured: true, connected: true}
 	handler := &Handler{meetingStarter: mock}
@@ -178,7 +191,21 @@ func TestExecuteMeetCommand_Success(t *testing.T) {
 	assert.Equal(t, "", mock.startedMeeting.topic)
 }
 
-func TestExecuteMeetCommand_SuccessWithTopic(t *testing.T) {
+func TestExecuteMeetCommand_StartSubcommandSuccess(t *testing.T) {
+	mock := &mockMeetingStarter{configured: true, connected: true}
+	handler := &Handler{meetingStarter: mock}
+
+	resp, err := handler.Handle(&model.CommandArgs{
+		Command:   "/meet start Sprint Planning",
+		UserId:    "user1",
+		ChannelId: "chan1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Text)
+	assert.Equal(t, "Sprint Planning", mock.startedMeeting.topic)
+}
+
+func TestExecuteMeetCommand_LegacyTopicSuccess(t *testing.T) {
 	mock := &mockMeetingStarter{configured: true, connected: true}
 	handler := &Handler{meetingStarter: mock}
 
