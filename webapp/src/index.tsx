@@ -22,8 +22,9 @@ export default class Plugin {
             const status = await getConfigStatus();
             configured = status.configured;
             isAdmin = status.is_admin;
-        } catch {
-            configured = true;
+        } catch (error) {
+            // Keep the safe default when config status cannot be determined.
+            console.warn('Failed to load Google Meet plugin config status', error);
         }
 
         registry.registerPostTypeComponent('custom_google_meet', PostTypeGoogleMeet);
@@ -39,10 +40,14 @@ export default class Plugin {
                     try {
                         const data = await createMeeting(channel.id);
                         if (data.status !== 'ok' && data.status !== 'handled') {
+                            const serverContext = data.message || data.error || data.reason;
+                            const message = serverContext ?
+                                `Received an unexpected response from the server while starting a Google Meet meeting: ${serverContext}` :
+                                'Received an unexpected response from the server while starting a Google Meet meeting.';
                             postEphemeralMessage(
                                 store,
                                 channel.id,
-                                'Received an unexpected response from the server while starting a Google Meet meeting.',
+                                message,
                             );
                         }
                     } catch (error) {
