@@ -13,6 +13,7 @@ import (
 type MeetingStarter interface {
 	StartMeeting(userID, channelID, topic string) error
 	GetConnectURL() string
+	DisconnectUser(userID string) error
 	IsUserConnected(userID string) (bool, error)
 	IsPluginConfigured() bool
 	IsUserAdmin(userID string) (bool, error)
@@ -33,13 +34,15 @@ const meetCommandTrigger = "meet"
 func NewCommandHandler(client *pluginapi.Client, meetingStarter MeetingStarter) Command {
 	autocompleteData := model.NewAutocompleteData(meetCommandTrigger, "", "Google Meet commands")
 	autocompleteData.AddCommand(model.NewAutocompleteData("start", "[topic]", "Start a Google Meet meeting with an optional topic"))
+	autocompleteData.AddCommand(model.NewAutocompleteData("connect", "", "Connect or reconnect your Google account"))
+	autocompleteData.AddCommand(model.NewAutocompleteData("disconnect", "", "Disconnect your Google account"))
 	autocompleteData.AddCommand(model.NewAutocompleteData("help", "", "Show Google Meet command help"))
 
 	err := client.SlashCommand.Register(&model.Command{
 		Trigger:          meetCommandTrigger,
 		AutoComplete:     true,
 		AutoCompleteDesc: "Google Meet commands",
-		AutoCompleteHint: "start [topic]",
+		AutoCompleteHint: "help | start [topic] | connect | disconnect",
 		AutocompleteData: autocompleteData,
 	})
 	if err != nil {
@@ -63,15 +66,19 @@ func (c *Handler) Handle(args *model.CommandArgs) (*model.CommandResponse, error
 	switch trigger {
 	case meetCommandTrigger:
 		if len(fields) == 1 {
-			return c.executeMeetStartCommand(args, nil), nil
+			return c.executeMeetHelpCommand(), nil
 		}
 		switch fields[1] {
 		case "help":
 			return c.executeMeetHelpCommand(), nil
 		case "start":
 			return c.executeMeetStartCommand(args, fields[2:]), nil
+		case "connect":
+			return c.executeMeetConnectCommand(args), nil
+		case "disconnect":
+			return c.executeMeetDisconnectCommand(args), nil
 		default:
-			return c.executeMeetStartCommand(args, fields[1:]), nil
+			return c.executeMeetHelpCommand(), nil
 		}
 	default:
 		return &model.CommandResponse{
@@ -87,15 +94,16 @@ func (c *Handler) executeMeetHelpCommand() *model.CommandResponse {
 		Text: strings.Join([]string{
 			"Google Meet commands:",
 			"- `/meet start [topic]` starts a meeting with an optional topic.",
+			"- `/meet connect` opens the Google account connection flow.",
+			"- `/meet disconnect` removes your saved Google connection.",
 			"- `/meet help` shows this help message.",
-			"- `/meet [topic]` is still supported for backward compatibility.",
 		}, "\n"),
 	}
 }
 
-func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields []string) *model.CommandResponse {
+func (c *Handler) pluginNotConfiguredResponse(userID string) *model.CommandResponse {
 	if !c.meetingStarter.IsPluginConfigured() {
-		isAdmin, err := c.meetingStarter.IsUserAdmin(args.UserId)
+		isAdmin, err := c.meetingStarter.IsUserAdmin(userID)
 		if err != nil {
 			return &model.CommandResponse{
 				ResponseType: model.CommandResponseTypeEphemeral,
@@ -119,6 +127,47 @@ func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields [
 			ResponseType: model.CommandResponseTypeEphemeral,
 			Text:         "The Google Meet plugin is not configured. Please contact your system administrator.",
 		}
+	}
+
+	return nil
+}
+
+func (c *Handler) executeMeetConnectCommand(args *model.CommandArgs) *model.CommandResponse {
+	if resp := c.pluginNotConfiguredResponse(args.UserId); resp != nil {
+		return resp
+	}
+
+	connectURL := c.meetingStarter.GetConnectURL()
+	if connectURL == "" {
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "The Google account connection link is unavailable. Please contact your system administrator.",
+		}
+	}
+
+	return &model.CommandResponse{
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         fmt.Sprintf("Connect or reconnect your Google account. [Click here to continue](%s).", connectURL),
+	}
+}
+
+func (c *Handler) executeMeetDisconnectCommand(args *model.CommandArgs) *model.CommandResponse {
+	if err := c.meetingStarter.DisconnectUser(args.UserId); err != nil {
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "Failed to disconnect your Google account. Please try again.",
+		}
+	}
+
+	return &model.CommandResponse{
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         "Your Google account has been disconnected.",
+	}
+}
+
+func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields []string) *model.CommandResponse {
+	if resp := c.pluginNotConfiguredResponse(args.UserId); resp != nil {
+		return resp
 	}
 
 	connected, err := c.meetingStarter.IsUserConnected(args.UserId)
@@ -147,6 +196,7 @@ func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields [
 				Text:         fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL),
 			}
 		}
+
 		if errors.Is(err, ErrPublicChannelRestricted) {
 			return &model.CommandResponse{
 				ResponseType: model.CommandResponseTypeEphemeral,

@@ -18,6 +18,8 @@ type mockMeetingStarter struct {
 	startErr       error
 	connectedErr   error
 	adminErr       error
+	disconnectErr  error
+	disconnectedID string
 	startedMeeting struct {
 		userID    string
 		channelID string
@@ -32,7 +34,11 @@ func (m *mockMeetingStarter) StartMeeting(userID, channelID, topic string) error
 	return m.startErr
 }
 
-func (m *mockMeetingStarter) GetConnectURL() string         { return m.connectURL }
+func (m *mockMeetingStarter) GetConnectURL() string { return m.connectURL }
+func (m *mockMeetingStarter) DisconnectUser(userID string) error {
+	m.disconnectedID = userID
+	return m.disconnectErr
+}
 func (m *mockMeetingStarter) IsPluginConfigured() bool      { return m.configured }
 func (m *mockMeetingStarter) GetPluginConfigureURL() string { return m.configureURL }
 
@@ -71,7 +77,7 @@ func TestExecuteMeetCommand_NotConfigured_Admin(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -89,7 +95,7 @@ func TestExecuteMeetCommand_NotConfigured_AdminWithoutConfigureURL(t *testing.T)
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -103,7 +109,7 @@ func TestExecuteMeetCommand_NotConfigured_NonAdmin(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -120,7 +126,7 @@ func TestExecuteMeetCommand_NotConfigured_AdminCheckError(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -137,7 +143,7 @@ func TestExecuteMeetCommand_NotConnected(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -154,7 +160,7 @@ func TestExecuteMeetCommand_ConnectionCheckError(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -171,11 +177,13 @@ func TestExecuteMeetCommand_Help(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Contains(t, resp.Text, "/meet start [topic]")
+	assert.Contains(t, resp.Text, "/meet connect")
+	assert.Contains(t, resp.Text, "/meet disconnect")
 	assert.Contains(t, resp.Text, "/meet help")
 	assert.Empty(t, mock.startedMeeting.userID)
 }
 
-func TestExecuteMeetCommand_Success(t *testing.T) {
+func TestExecuteMeetCommand_WithoutSubcommandShowsHelp(t *testing.T) {
 	mock := &mockMeetingStarter{configured: true, connected: true}
 	handler := &Handler{meetingStarter: mock}
 
@@ -185,10 +193,8 @@ func TestExecuteMeetCommand_Success(t *testing.T) {
 		ChannelId: "chan1",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "", resp.Text)
-	assert.Equal(t, "user1", mock.startedMeeting.userID)
-	assert.Equal(t, "chan1", mock.startedMeeting.channelID)
-	assert.Equal(t, "", mock.startedMeeting.topic)
+	assert.Contains(t, resp.Text, "/meet start [topic]")
+	assert.Empty(t, mock.startedMeeting.userID)
 }
 
 func TestExecuteMeetCommand_StartSubcommandSuccess(t *testing.T) {
@@ -205,7 +211,53 @@ func TestExecuteMeetCommand_StartSubcommandSuccess(t *testing.T) {
 	assert.Equal(t, "Sprint Planning", mock.startedMeeting.topic)
 }
 
-func TestExecuteMeetCommand_LegacyTopicSuccess(t *testing.T) {
+func TestExecuteMeetCommand_Connect(t *testing.T) {
+	mock := &mockMeetingStarter{
+		configured: true,
+		connectURL: "http://localhost/connect",
+	}
+	handler := &Handler{meetingStarter: mock}
+
+	resp, err := handler.Handle(&model.CommandArgs{
+		Command:   "/meet connect",
+		UserId:    "user1",
+		ChannelId: "chan1",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, resp.Text, "Connect or reconnect your Google account")
+	assert.Contains(t, resp.Text, "http://localhost/connect")
+	assert.Empty(t, mock.startedMeeting.userID)
+}
+
+func TestExecuteMeetCommand_Disconnect(t *testing.T) {
+	mock := &mockMeetingStarter{}
+	handler := &Handler{meetingStarter: mock}
+
+	resp, err := handler.Handle(&model.CommandArgs{
+		Command:   "/meet disconnect",
+		UserId:    "user1",
+		ChannelId: "chan1",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, resp.Text, "has been disconnected")
+	assert.Equal(t, "user1", mock.disconnectedID)
+}
+
+func TestExecuteMeetCommand_DisconnectError(t *testing.T) {
+	mock := &mockMeetingStarter{disconnectErr: errors.New("kv error")}
+	handler := &Handler{meetingStarter: mock}
+
+	resp, err := handler.Handle(&model.CommandArgs{
+		Command:   "/meet disconnect",
+		UserId:    "user1",
+		ChannelId: "chan1",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, resp.Text, "Failed to disconnect")
+	assert.Equal(t, "user1", mock.disconnectedID)
+}
+
+func TestExecuteMeetCommand_UnknownSubcommandShowsHelp(t *testing.T) {
 	mock := &mockMeetingStarter{configured: true, connected: true}
 	handler := &Handler{meetingStarter: mock}
 
@@ -215,8 +267,8 @@ func TestExecuteMeetCommand_LegacyTopicSuccess(t *testing.T) {
 		ChannelId: "chan1",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "", resp.Text)
-	assert.Equal(t, "Sprint Planning", mock.startedMeeting.topic)
+	assert.Contains(t, resp.Text, "/meet start [topic]")
+	assert.Empty(t, mock.startedMeeting.userID)
 }
 
 func TestExecuteMeetCommand_NeedsReconnect(t *testing.T) {
@@ -229,7 +281,7 @@ func TestExecuteMeetCommand_NeedsReconnect(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -247,7 +299,7 @@ func TestExecuteMeetCommand_PublicChannelRestricted(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})
@@ -265,7 +317,7 @@ func TestExecuteMeetCommand_StartMeetingError(t *testing.T) {
 	handler := &Handler{meetingStarter: mock}
 
 	resp, err := handler.Handle(&model.CommandArgs{
-		Command:   "/meet",
+		Command:   "/meet start",
 		UserId:    "user1",
 		ChannelId: "chan1",
 	})

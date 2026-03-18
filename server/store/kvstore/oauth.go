@@ -104,10 +104,6 @@ func (kv *Client) GetOAuth2Token(userID string) (*OAuth2Token, error) {
 }
 
 func (kv *Client) DeleteOAuth2Token(userID string) error {
-	if err := kv.requireEncryptionKey(); err != nil {
-		return err
-	}
-
 	err := kv.client.KV.Delete(oauthTokenPrefix + userID)
 	if err != nil {
 		return errors.Wrap(err, "failed to delete token")

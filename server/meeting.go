@@ -81,6 +81,19 @@ func (p *Plugin) GetConnectURL() string {
 	return p.getOAuth2ConnectURL()
 }
 
+func (p *Plugin) DisconnectUser(userID string) error {
+	store, err := p.getOAuthKVStore()
+	if err != nil {
+		return err
+	}
+
+	if err := store.DeleteOAuth2Token(userID); err != nil {
+		return fmt.Errorf("failed to delete user token: %w", err)
+	}
+
+	return nil
+}
+
 func (p *Plugin) IsUserConnected(userID string) (bool, error) {
 	store, err := p.getOAuthKVStore()
 	if err != nil {

@@ -7,6 +7,8 @@ This plugin adds `/meet` slash commands and a channel header button that let use
 ## Features
 
 - Start a Google Meet meeting with `/meet start [topic]` or the channel header button.
+- Connect or reconnect a Google account with `/meet connect`.
+- Disconnect a Google account with `/meet disconnect`.
 - Create meetings as the currently connected Google user.
 - Post a rich Mattermost message with a join link back into the channel.
 - Optionally block meeting creation in public channels.
@@ -28,7 +30,7 @@ After the plugin is configured by a Mattermost administrator:
 
 The created post includes the meeting URL and an obvious join action in the Mattermost UI.
 
-For backward compatibility, `/meet [topic]` still starts a meeting with an optional topic, and `/meet help` shows the available commands.
+`/meet help` shows the available commands, including `connect` and `disconnect`.
 
 ## Admin Setup
 
