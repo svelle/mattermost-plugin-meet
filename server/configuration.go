@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/pkg/errors"
@@ -77,4 +78,17 @@ func (p *Plugin) OnConfigurationChange() error {
 	p.updateSettingsHeader()
 
 	return nil
+}
+
+func (p *Plugin) IsPluginConfigured() bool {
+	return p.pluginReadinessError() == nil
+}
+
+func (p *Plugin) GetPluginConfigureURL() string {
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/admin_console/plugins/plugin_%s", siteURL, manifestID())
 }
