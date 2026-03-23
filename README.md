@@ -2,16 +2,19 @@
 
 Start and join Google Meet meetings from Mattermost.
 
-This plugin adds a `/meet` slash command and a channel header button that let users create a Google Meet link from within Mattermost. Meetings are created using the Google account that each user connects through OAuth.
+This plugin adds `/meet` slash commands and a channel header button that let users create a Google Meet link from within Mattermost. Meetings are created using the Google account that each user connects through OAuth.
 
 <img width="1519" height="1138" alt="image" src="https://github.com/user-attachments/assets/a96a9b40-a2b7-4aae-a280-ec14c222dda9" />
 
 
 ## Features
 
-- Start a Google Meet meeting with `/meet` or the channel header button.
+- Start a Google Meet meeting with `/meet start [topic]` or the channel header button.
+- Connect or reconnect a Google account with `/meet connect`.
+- Disconnect a Google account with `/meet disconnect`.
 - Create meetings as the currently connected Google user.
 - Post a rich Mattermost message with a join link back into the channel.
+- Optionally block meeting creation in public channels.
 - Prompt users to connect or reconnect their Google account when OAuth is missing or stale.
 - Hide the meeting button for non-admin users until the plugin is fully configured.
 
@@ -19,16 +22,18 @@ This plugin adds a `/meet` slash command and a channel header button that let us
 
 After the plugin is configured by a Mattermost administrator:
 
-1. A user runs `/meet` or clicks the Google Meet channel header button.
+1. A user runs `/meet start` or clicks the Google Meet channel header button.
 2. If the user has not connected Google yet, the plugin returns a connect link.
 3. Once connected, the plugin creates a Meet link and posts it into the current channel.
-4. `/meet` optionally accepts a topic, for example:
+4. `/meet start` optionally accepts a topic, for example:
 
 ```text
-/meet Sprint planning
+/meet start Sprint planning
 ```
 
 The created post includes the meeting URL and an obvious join action in the Mattermost UI.
+
+`/meet help` shows the available commands, including `connect` and `disconnect`.
 
 ## Admin Setup
 
@@ -77,6 +82,7 @@ In the Mattermost System Console, configure:
 - `Google OAuth Client ID`: the Google OAuth client ID.
 - `Google OAuth Client Secret`: the Google OAuth client secret.
 - `Encryption Key`: the generated secret used to encrypt OAuth tokens at rest in Mattermost's KV store.
+- `Restrict Meeting Creation`: when enabled, users can only create meetings in private channels, group messages, and direct messages.
 
 Important notes:
 
@@ -96,6 +102,10 @@ OAuth client secret used during token exchange and refresh. This field is marked
 ### `EncryptionKey`
 
 Generated secret used to encrypt OAuth tokens before storing them in Mattermost. The plugin will not enable OAuth token operations until this is configured.
+
+### `RestrictMeetingCreation`
+
+When enabled, meeting creation is blocked in public channels. Users can still start meetings in private channels and direct-message surfaces.
 
 ## Development
 
@@ -197,3 +207,5 @@ Reconnecting refreshes the user's stored OAuth state.
 ### Users cannot start meetings in a channel
 
 The plugin only posts meeting links into channels where the user has permission to create posts.
+
+If `RestrictMeetingCreation` is enabled, public channels are also blocked even when the user has permission to post there.

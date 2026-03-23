@@ -10,15 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
 // ErrInsufficientScopes indicates the token lacks the required OAuth scope.
 var ErrInsufficientScopes = errors.New("insufficient authentication scopes")
 
 const (
-	googleAuthURL = "https://accounts.google.com/o/oauth2/v2/auth"
-	meetScope     = "https://www.googleapis.com/auth/meetings.space.created"
+	googleAuthURL      = "https://accounts.google.com/o/oauth2/v2/auth"
+	meetScope          = "https://www.googleapis.com/auth/meetings.space.created"
+	tokenRefreshBuffer = 5 * time.Minute
 )
 
 // These are vars so tests can override them with httptest servers.
@@ -186,8 +187,8 @@ func (p *Plugin) getValidToken(userID string) (*kvstore.OAuth2Token, error) {
 		return nil, nil
 	}
 
-	// Refresh if token expires within 1 minute
-	if time.Until(token.Expiry) < time.Minute {
+	// Refresh early to avoid edge-of-expiry failures in slower environments.
+	if time.Until(token.Expiry) < tokenRefreshBuffer {
 		token, err = p.refreshToken(token)
 		if err != nil {
 			return nil, fmt.Errorf("failed to refresh expired token: %w", err)

@@ -13,19 +13,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
 // mockPluginAPI implements the plugin.API interface methods we need for testing.
 type mockPluginAPI struct {
 	plugin.API
-	siteURL string
-	user    *model.User
-	userErr *model.AppError
-	post    *model.Post
-	postErr *model.AppError
-	logged  []string
-	hasPerm bool
+	siteURL        string
+	user           *model.User
+	userErr        *model.AppError
+	channel        *model.Channel
+	channelErr     *model.AppError
+	post           *model.Post
+	postErr        *model.AppError
+	ephemeralPosts []*model.Post
+	logged         []string
+	hasPerm        bool
 }
 
 func (m *mockPluginAPI) GetConfig() *model.Config {
@@ -54,12 +57,27 @@ func (m *mockPluginAPI) GetUser(userID string) (*model.User, *model.AppError) {
 	return &model.User{}, nil
 }
 
+func (m *mockPluginAPI) GetChannel(channelID string) (*model.Channel, *model.AppError) {
+	if m.channelErr != nil {
+		return nil, m.channelErr
+	}
+	if m.channel != nil {
+		return m.channel, nil
+	}
+	return &model.Channel{Id: channelID, Type: model.ChannelTypePrivate}, nil
+}
+
 func (m *mockPluginAPI) CreatePost(post *model.Post) (*model.Post, *model.AppError) {
 	m.post = post
 	if m.postErr != nil {
 		return nil, m.postErr
 	}
 	return post, nil
+}
+
+func (m *mockPluginAPI) SendEphemeralPost(_ string, post *model.Post) *model.Post {
+	m.ephemeralPosts = append(m.ephemeralPosts, post)
+	return post
 }
 
 func (m *mockPluginAPI) HasPermissionToChannel(userID, channelID string, permission *model.Permission) bool {
@@ -239,7 +257,10 @@ func TestHandleCreateMeeting_NotConfigured(t *testing.T) {
 	var resp map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Equal(t, "not_configured", resp["error"])
+	assert.Equal(t, "handled", resp["status"])
+	assert.Equal(t, "not_configured", resp["reason"])
+	require.Len(t, api.ephemeralPosts, 1)
+	assert.Contains(t, api.ephemeralPosts[0].Message, "Configure it in the System Console")
 }
 
 func TestHandleCreateMeeting_NotConfiguredWithoutSiteURL(t *testing.T) {
@@ -262,10 +283,10 @@ func TestHandleCreateMeeting_NotConfiguredWithoutSiteURL(t *testing.T) {
 	var resp map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Equal(t, "not_configured", resp["error"])
-	_, hasConfigureURL := resp["configure_url"]
-	assert.False(t, hasConfigureURL)
-	assert.Contains(t, resp["configure_help"], "Site URL")
+	assert.Equal(t, "handled", resp["status"])
+	assert.Equal(t, "not_configured", resp["reason"])
+	require.Len(t, api.ephemeralPosts, 1)
+	assert.Contains(t, api.ephemeralPosts[0].Message, "Site URL")
 }
 
 func TestHandleCreateMeeting_BadRequest(t *testing.T) {
@@ -300,7 +321,7 @@ func TestHandleCreateMeeting_BadRequest(t *testing.T) {
 }
 
 func TestHandleCreateMeeting_NotConnected(t *testing.T) {
-	p, _, _ := setupPlugin(t)
+	p, api, _ := setupPlugin(t)
 	// No token stored — user is not connected
 
 	body, _ := json.Marshal(map[string]string{"channel_id": "chan1"})
@@ -313,8 +334,10 @@ func TestHandleCreateMeeting_NotConnected(t *testing.T) {
 	var resp map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Equal(t, "not_connected", resp["error"])
-	assert.Contains(t, resp["connect_url"], "oauth/connect")
+	assert.Equal(t, "handled", resp["status"])
+	assert.Equal(t, "not_connected", resp["reason"])
+	require.Len(t, api.ephemeralPosts, 1)
+	assert.Contains(t, api.ephemeralPosts[0].Message, "oauth/connect")
 }
 
 func TestHandleCreateMeeting_Success(t *testing.T) {
@@ -362,6 +385,7 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp["status"])
+	assert.Empty(t, api.ephemeralPosts)
 
 	// Verify the post was created
 	require.NotNil(t, api.post)
@@ -386,11 +410,47 @@ func TestHandleCreateMeeting_NoChannelPermission(t *testing.T) {
 	w := httptest.NewRecorder()
 	p.router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Contains(t, resp["error"], "permission")
+	assert.Equal(t, "handled", resp["status"])
+	assert.Equal(t, "permission_denied", resp["reason"])
+	require.Len(t, api.ephemeralPosts, 1)
+	assert.Contains(t, api.ephemeralPosts[0].Message, "permission")
+}
+
+func TestHandleCreateMeeting_PublicChannelRestricted(t *testing.T) {
+	p, api, kv := setupPlugin(t)
+	api.hasPerm = true
+	api.channel = &model.Channel{Id: "chan1", Type: model.ChannelTypeOpen}
+	p.setConfiguration(&configuration{
+		GoogleClientID:          "test-client-id",
+		GoogleClientSecret:      "test-client-secret",
+		EncryptionKey:           "test-encryption-key",
+		RestrictMeetingCreation: true,
+	})
+	kv.tokens["user1"] = &kvstore.OAuth2Token{
+		AccessToken:  "valid-token",
+		TokenType:    "Bearer",
+		RefreshToken: "refresh",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+
+	body, _ := json.Marshal(map[string]string{"channel_id": "chan1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meeting", bytes.NewReader(body))
+	req.Header.Set("Mattermost-User-ID", "user1")
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "handled", resp["status"])
+	assert.Equal(t, "public_channel_restricted", resp["reason"])
+	require.Len(t, api.ephemeralPosts, 1)
+	assert.Contains(t, api.ephemeralPosts[0].Message, "restricted in public channels")
 }
 
 func TestHandleErrorWithCode(t *testing.T) {

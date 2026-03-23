@@ -59,4 +59,4 @@ formatters:
           replacement: any
     goimports:
       local-prefixes:
-        - github.com/mattermost/mattermost-plugin-meet
+        - github.com/mattermost/mattermost-plugin-google-meet

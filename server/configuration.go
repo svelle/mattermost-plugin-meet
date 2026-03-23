@@ -1,17 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/pkg/errors"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
 type configuration struct {
-	GoogleClientID     string `json:"GoogleClientID"`
-	GoogleClientSecret string `json:"GoogleClientSecret"`
-	EncryptionKey      string `json:"EncryptionKey"`
+	GoogleClientID          string `json:"GoogleClientID"`
+	GoogleClientSecret      string `json:"GoogleClientSecret"`
+	EncryptionKey           string `json:"EncryptionKey"`
+	RestrictMeetingCreation bool   `json:"RestrictMeetingCreation"`
 }
 
 func (c *configuration) Clone() *configuration {
@@ -76,4 +78,17 @@ func (p *Plugin) OnConfigurationChange() error {
 	p.updateSettingsHeader()
 
 	return nil
+}
+
+func (p *Plugin) IsPluginConfigured() bool {
+	return p.pluginReadinessError() == nil
+}
+
+func (p *Plugin) GetPluginConfigureURL() string {
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/admin_console/plugins/plugin_%s", siteURL, manifestID())
 }

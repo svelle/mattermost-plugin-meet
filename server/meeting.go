@@ -6,7 +6,7 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/command"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/command"
 )
 
 // ErrNoChannelPermission indicates the user cannot create posts in the channel.
@@ -15,6 +15,16 @@ var ErrNoChannelPermission = errors.New("no permission to create posts in this c
 func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	if !p.API.HasPermissionToChannel(userID, channelID, model.PermissionCreatePost) {
 		return ErrNoChannelPermission
+	}
+
+	if p.getConfiguration().RestrictMeetingCreation {
+		channel, appErr := p.API.GetChannel(channelID)
+		if appErr != nil {
+			return fmt.Errorf("failed to get channel: %w", appErr)
+		}
+		if channel.Type == model.ChannelTypeOpen {
+			return command.ErrPublicChannelRestricted
+		}
 	}
 
 	p.API.LogDebug("StartMeeting: getting valid token", "user_id", userID)
@@ -65,42 +75,4 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 	}
 
 	return nil
-}
-
-func (p *Plugin) GetConnectURL() string {
-	return p.getOAuth2ConnectURL()
-}
-
-func (p *Plugin) IsUserConnected(userID string) (bool, error) {
-	store, err := p.getOAuthKVStore()
-	if err != nil {
-		return false, err
-	}
-
-	token, err := store.GetOAuth2Token(userID)
-	if err != nil {
-		return false, err
-	}
-	return token != nil, nil
-}
-
-func (p *Plugin) IsPluginConfigured() bool {
-	return p.pluginReadinessError() == nil
-}
-
-func (p *Plugin) IsUserAdmin(userID string) (bool, error) {
-	user, appErr := p.API.GetUser(userID)
-	if appErr != nil {
-		return false, fmt.Errorf("failed to get user: %w", appErr)
-	}
-	return user.IsSystemAdmin(), nil
-}
-
-func (p *Plugin) GetPluginConfigureURL() string {
-	siteURL := p.getSiteURL()
-	if siteURL == "" {
-		return ""
-	}
-
-	return fmt.Sprintf("%s/admin_console/plugins/plugin_%s", siteURL, manifestID())
 }

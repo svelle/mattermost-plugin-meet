@@ -2,8 +2,8 @@
     "id": "com.mattermost.google-meet",
     "name": "Google Meet",
     "description": "Start and join Google Meet meetings from Mattermost.",
-    "homepage_url": "https://github.com/mattermost/mattermost-plugin-meet",
-    "support_url": "https://github.com/mattermost/mattermost-plugin-meet/issues",
+    "homepage_url": "https://github.com/mattermost/mattermost-plugin-google-meet",
+    "support_url": "https://github.com/mattermost/mattermost-plugin-google-meet/issues",
     "icon_path": "assets/icon.svg",
     "min_server_version": "6.2.1",
     "server": {
@@ -43,6 +43,13 @@
                 "type": "generated",
                 "help_text": "A secret key used to encrypt OAuth tokens stored in the database. Regenerating this key will invalidate all existing user connections.",
                 "default": ""
+            },
+            {
+                "key": "RestrictMeetingCreation",
+                "display_name": "Restrict Meeting Creation",
+                "type": "bool",
+                "help_text": "Restrict users from creating meetings in public channels.",
+                "default": false
             }
         ]
     }

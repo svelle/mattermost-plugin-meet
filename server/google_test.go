@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mattermost/mattermost-plugin-meet/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
 func TestCreateMeeting_Success(t *testing.T) {
@@ -350,4 +350,47 @@ func TestRefreshToken_UpdatesRefreshToken(t *testing.T) {
 	newToken, err := p.refreshToken(oldToken)
 	require.NoError(t, err)
 	assert.Equal(t, "new-refresh", newToken.RefreshToken, "should use new refresh token when returned")
+}
+
+func TestGetValidToken_RefreshesWithinBuffer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseForm()
+		require.NoError(t, err)
+		assert.Equal(t, "refresh_token", r.Form.Get("grant_type"))
+		assert.Equal(t, "original-refresh", r.Form.Get("refresh_token"))
+
+		resp := tokenResponse{
+			AccessToken:  "new-access",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
+			RefreshToken: "original-refresh",
+		}
+		w.WriteHeader(http.StatusOK)
+		encodeErr := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, encodeErr)
+	}))
+	defer server.Close()
+
+	origTokenURL := googleTokenURL
+	origClient := httpClient
+	googleTokenURL = server.URL
+	httpClient = server.Client()
+	defer func() {
+		googleTokenURL = origTokenURL
+		httpClient = origClient
+	}()
+
+	p, _, kv := setupPlugin(t)
+	kv.tokens["user1"] = &kvstore.OAuth2Token{
+		AccessToken:  "old-access",
+		TokenType:    "Bearer",
+		RefreshToken: "original-refresh",
+		Expiry:       time.Now().Add(4 * time.Minute),
+	}
+
+	token, err := p.getValidToken("user1")
+	require.NoError(t, err)
+	require.NotNil(t, token)
+	assert.Equal(t, "new-access", token.AccessToken)
+	assert.Equal(t, "new-access", kv.tokens["user1"].AccessToken)
 }
