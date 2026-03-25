@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -47,6 +48,8 @@ var (
 	BuildHashShort  string
 	BuildTagLatest  string
 	BuildTagCurrent string
+
+	semverTagPattern = regexp.MustCompile(`^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 )
 
 func main() {
@@ -121,18 +124,23 @@ func findManifest() (*model.Manifest, error) {
 	// commit, and use the first version we find (to prevent causing errors)
 	if manifest.Version == "" {
 		var version string
-		tags := strings.FieldsSeq(BuildTagCurrent)
-		for t := range tags {
-			if strings.HasPrefix(t, "v") {
+		tags := strings.Fields(BuildTagCurrent)
+		for _, t := range tags {
+			if semverTagPattern.MatchString(t) {
 				version = t
 				break
 			}
 		}
 		if version == "" {
-			if BuildTagLatest != "" {
+			switch {
+			case BuildTagLatest != "" && BuildHashShort != "":
 				version = BuildTagLatest + "+" + BuildHashShort
-			} else {
+			case BuildTagLatest != "":
+				version = BuildTagLatest
+			case BuildHashShort != "":
 				version = "v0.0.0+" + BuildHashShort
+			default:
+				version = "v0.0.0"
 			}
 		}
 		manifest.Version = strings.TrimPrefix(version, "v")
