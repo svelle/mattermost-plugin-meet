@@ -1,3 +1,6 @@
+// Copyright (c) 2026-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+
 package command
 
 import (
@@ -180,9 +183,13 @@ func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields [
 
 	if !connected {
 		connectURL := c.meetingStarter.GetConnectURL()
+		text := "You need to connect your Google account first. Run `/meet connect` to get started."
+		if connectURL != "" {
+			text = fmt.Sprintf("You need to connect your Google account first. [Click here to connect](%s).", connectURL)
+		}
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         fmt.Sprintf("You need to connect your Google account first. [Click here to connect](%s).", connectURL),
+			Text:         text,
 		}
 	}
 
@@ -191,9 +198,13 @@ func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields [
 	if err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
 		if errors.Is(err, ErrNeedsReconnect) {
 			connectURL := c.meetingStarter.GetConnectURL()
+			text := "Your Google account needs to be reconnected. Run `/meet connect` to reconnect."
+			if connectURL != "" {
+				text = fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL)
+			}
 			return &model.CommandResponse{
 				ResponseType: model.CommandResponseTypeEphemeral,
-				Text:         fmt.Sprintf("Your Google account needs to be reconnected. [Click here to reconnect](%s).", connectURL),
+				Text:         text,
 			}
 		}
 

@@ -145,9 +145,14 @@ patch-rc: ## to bump patch release candidate version (semver)
 minor-rc: ## to bump minor release candidate version (semver)
 	$(call check_protected_branch)
 	$(call check_pending_pulls)
+	@$(eval BASE_VERSION := $(strip $(LATEST_RELEASE_TAG)))
+	@$(eval BASE_VERSION_PARTS := $(subst ., ,$(subst v,,$(subst -rc, ,$(BASE_VERSION)))))
+	@$(eval MAJOR := $(word 1,$(BASE_VERSION_PARTS)))
+	@$(eval MINOR := $(word 2,$(BASE_VERSION_PARTS)))
+	@$(eval PATCH := $(word 3,$(BASE_VERSION_PARTS)))
 	@$(eval MINOR := $(shell echo $$(($(MINOR)+1))))
 	@$(eval PATCH := 0)
-	@$(eval RC := 1)
+	@$(eval RC := $(shell echo $$(($(RC)+1))))
 	$(call prompt_approval,$(MAJOR).$(MINOR).$(PATCH)-rc$(RC))
 	@echo Bumping $(APP_NAME) to Minor RC version $(MAJOR).$(MINOR).$(PATCH)-rc$(RC)
 	git tag -s -a v$(MAJOR).$(MINOR).$(PATCH)-rc$(RC) -m "Bumping $(APP_NAME) to Minor RC version $(MAJOR).$(MINOR).$(PATCH)-rc$(RC)"
@@ -186,6 +191,7 @@ install-go-tools:
 	@echo Installing go tools
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.9.0
 	$(GO) install gotest.tools/gotestsum@v1.13.0
+	$(GO) install github.com/mattermost/mattermost-govet/v2@470cf78253f0aa85a4f4b5b50002682bf823e729
 
 ## Runs eslint and golangci-lint
 .PHONY: check-style
@@ -204,6 +210,7 @@ ifneq ($(HAS_SERVER),)
 	@echo Running golangci-lint
 	$(GO) vet ./...
 	$(GOBIN)/golangci-lint run ./...
+	$(GO) vet -vettool=$(GOBIN)/mattermost-govet -license -license.year=2026 ./...
 endif
 
 ## Builds the server, if it exists, for all supported architectures, unless MM_SERVICESETTINGS_ENABLEDEVELOPER is set.
