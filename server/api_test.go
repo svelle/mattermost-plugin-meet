@@ -32,6 +32,13 @@ type mockPluginAPI struct {
 	ephemeralPosts []*model.Post
 	logged         []string
 	hasPerm        bool
+	wsPublished    []mockWSPublish
+}
+
+type mockWSPublish struct {
+	event     string
+	payload   map[string]any
+	broadcast *model.WebsocketBroadcast
 }
 
 func (m *mockPluginAPI) GetConfig() *model.Config {
@@ -85,6 +92,14 @@ func (m *mockPluginAPI) SendEphemeralPost(_ string, post *model.Post) *model.Pos
 
 func (m *mockPluginAPI) HasPermissionToChannel(userID, channelID string, permission *model.Permission) bool {
 	return m.hasPerm
+}
+
+func (m *mockPluginAPI) PublishWebSocketEvent(event string, payload map[string]any, broadcast *model.WebsocketBroadcast) {
+	m.wsPublished = append(m.wsPublished, mockWSPublish{
+		event:     event,
+		payload:   payload,
+		broadcast: broadcast,
+	})
 }
 
 // mockKVStore implements kvstore.KVStore for testing.
@@ -388,6 +403,7 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp["status"])
+	assert.Equal(t, "https://meet.google.com/test-meet", resp["meeting_url"])
 	assert.Empty(t, api.ephemeralPosts)
 
 	// Verify the post was created
@@ -395,6 +411,12 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 	assert.Equal(t, "chan1", api.post.ChannelId)
 	assert.Equal(t, "custom_google_meet", api.post.Type)
 	assert.Equal(t, "https://meet.google.com/test-meet", api.post.Props["meeting_link"])
+
+	require.Len(t, api.wsPublished, 1)
+	assert.Equal(t, websocketEventMeetingStarted, api.wsPublished[0].event)
+	assert.Equal(t, "https://meet.google.com/test-meet", api.wsPublished[0].payload["meeting_url"])
+	require.NotNil(t, api.wsPublished[0].broadcast)
+	assert.Equal(t, "user1", api.wsPublished[0].broadcast.UserId)
 }
 
 func TestHandleCreateMeeting_NoChannelPermission(t *testing.T) {

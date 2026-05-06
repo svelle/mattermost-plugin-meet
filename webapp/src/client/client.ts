@@ -8,6 +8,7 @@ export interface ConfigStatusResponse {
 
 export interface CreateMeetingResponse {
     status?: string;
+    meeting_url?: string;
     reason?: string;
     message?: string;
     error?: string;

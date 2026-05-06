@@ -14,7 +14,7 @@ import (
 
 // MeetingStarter is the interface the command handler uses to start meetings.
 type MeetingStarter interface {
-	StartMeeting(userID, channelID, topic string) error
+	StartMeeting(userID, channelID, topic string) (string, error)
 	GetConnectURL() string
 	DisconnectUser(userID string) error
 	IsUserConnected(userID string) (bool, error)
@@ -195,7 +195,7 @@ func (c *Handler) executeMeetStartCommand(args *model.CommandArgs, topicFields [
 
 	topic := strings.Join(topicFields, " ")
 
-	if err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
+	if _, err := c.meetingStarter.StartMeeting(args.UserId, args.ChannelId, topic); err != nil {
 		if errors.Is(err, ErrNeedsReconnect) {
 			connectURL := c.meetingStarter.GetConnectURL()
 			text := "Your Google account needs to be reconnected. Run `/meet connect` to reconnect."
