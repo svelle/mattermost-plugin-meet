@@ -1,7 +1,7 @@
 # Mattermost Google Meet Plugin
 
 
-#### Warning: This plugin is not security reviewed or officially supported and should be considered experimental!
+#### Warning: This is a beta plugin and not covered by any kind of Mattermost Enterprise support entitlements!
 
 Start and join Google Meet meetings from Mattermost.
 
