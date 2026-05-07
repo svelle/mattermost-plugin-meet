@@ -200,8 +200,9 @@ setTimeout(function() { window.close(); }, 3000);
 }
 
 type createMeetingRequest struct {
-	ChannelID string `json:"channel_id"`
-	Topic     string `json:"topic"`
+	ChannelID    string `json:"channel_id"`
+	Topic        string `json:"topic"`
+	ConnectionID string `json:"connection_id"`
 }
 
 func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
@@ -281,7 +282,7 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meetURL, err := p.StartMeeting(userID, req.ChannelID, req.Topic)
+	meetURL, err := p.StartMeeting(userID, req.ChannelID, req.Topic, req.ConnectionID)
 	if err != nil {
 		if errors.Is(err, command.ErrNeedsReconnect) {
 			connectURL := p.GetConnectURL()

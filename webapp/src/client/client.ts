@@ -35,12 +35,15 @@ export const getConfigStatus = async (): Promise<ConfigStatusResponse> => {
     return statusResp.json();
 };
 
-export const createMeeting = async (channelID: string): Promise<CreateMeetingResponse> => {
+export const createMeeting = async (channelID: string, connectionId = ''): Promise<CreateMeetingResponse> => {
     let resp: Response;
     try {
         resp = await doFetch(`/plugins/${manifest.id}/api/v1/meeting`, {
             method: 'POST',
-            body: JSON.stringify({channel_id: channelID}),
+            body: JSON.stringify({
+                channel_id: channelID,
+                connection_id: connectionId,
+            }),
         });
     } catch {
         throw new Error('Unable to reach the server to start a Google Meet meeting. Please try again.');

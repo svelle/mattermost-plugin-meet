@@ -19,7 +19,9 @@ var ErrNoChannelPermission = errors.New("no permission to create posts in this c
 
 // StartMeeting creates a Google Meet space, posts to the channel, notifies the
 // starter's clients via WebSocket (for opening the join URL), and returns the meet URL.
-func (p *Plugin) StartMeeting(userID, channelID, topic string) (string, error) {
+// connectionID, when non-empty, scopes the WebSocket event to that browser session only
+// (see mattermost-plugin-zoom PR #468 / MM-68481).
+func (p *Plugin) StartMeeting(userID, channelID, topic, connectionID string) (string, error) {
 	if !p.API.HasPermissionToChannel(userID, channelID, model.PermissionCreatePost) {
 		return "", ErrNoChannelPermission
 	}
@@ -81,9 +83,13 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) (string, error) {
 		return "", fmt.Errorf("failed to create post: %w", appErr)
 	}
 
+	broadcast := &model.WebsocketBroadcast{UserId: userID}
+	if connectionID != "" {
+		broadcast.ConnectionId = connectionID
+	}
 	p.API.PublishWebSocketEvent(websocketEventMeetingStarted, map[string]any{
 		"meeting_url": meetURL,
-	}, &model.WebsocketBroadcast{UserId: userID})
+	}, broadcast)
 
 	return meetURL, nil
 }

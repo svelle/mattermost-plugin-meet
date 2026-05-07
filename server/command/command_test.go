@@ -30,7 +30,7 @@ type mockMeetingStarter struct {
 	}
 }
 
-func (m *mockMeetingStarter) StartMeeting(userID, channelID, topic string) (string, error) {
+func (m *mockMeetingStarter) StartMeeting(userID, channelID, topic, _ string) (string, error) {
 	m.startedMeeting.userID = userID
 	m.startedMeeting.channelID = channelID
 	m.startedMeeting.topic = topic

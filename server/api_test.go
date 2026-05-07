@@ -417,6 +417,55 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 	assert.Equal(t, "https://meet.google.com/test-meet", api.wsPublished[0].payload["meeting_url"])
 	require.NotNil(t, api.wsPublished[0].broadcast)
 	assert.Equal(t, "user1", api.wsPublished[0].broadcast.UserId)
+	assert.Empty(t, api.wsPublished[0].broadcast.ConnectionId)
+}
+
+func TestHandleCreateMeeting_Success_WithConnectionID(t *testing.T) {
+	meetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		resp := meetSpaceResponse{
+			Name:        "spaces/test",
+			MeetingURI:  "https://meet.google.com/conn-tab-meet",
+			MeetingCode: "conn-tab-meet",
+		}
+		w.WriteHeader(http.StatusOK)
+		err := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
+	}))
+	defer meetServer.Close()
+
+	origURL := googleMeetURL
+	origClient := httpClient
+	googleMeetURL = meetServer.URL + "/v2"
+	httpClient = meetServer.Client()
+	defer func() {
+		googleMeetURL = origURL
+		httpClient = origClient
+	}()
+
+	p, api, kv := setupPlugin(t)
+	api.hasPerm = true
+
+	kv.tokens["user1"] = &kvstore.OAuth2Token{
+		AccessToken:  "valid-token",
+		TokenType:    "Bearer",
+		RefreshToken: "refresh",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"channel_id":    "chan1",
+		"connection_id": "ws-session-abc",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meeting", bytes.NewReader(body))
+	req.Header.Set("Mattermost-User-ID", "user1")
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, api.wsPublished, 1)
+	require.NotNil(t, api.wsPublished[0].broadcast)
+	assert.Equal(t, "user1", api.wsPublished[0].broadcast.UserId)
+	assert.Equal(t, "ws-session-abc", api.wsPublished[0].broadcast.ConnectionId)
 }
 
 func TestHandleCreateMeeting_NoChannelPermission(t *testing.T) {

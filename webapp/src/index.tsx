@@ -39,7 +39,8 @@ export default class Plugin {
             (channel: Channel) => {
                 const startMeeting = async () => {
                     try {
-                        const data = await createMeeting(channel.id);
+                        const connectionId = store.getState().websocket?.connectionId || '';
+                        const data = await createMeeting(channel.id, connectionId);
                         if (data.status !== 'ok' && data.status !== 'handled') {
                             const serverContext = data.message || data.error || data.reason;
                             const message = serverContext ?
