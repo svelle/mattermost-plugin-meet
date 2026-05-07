@@ -461,8 +461,18 @@ func TestHandleCreateMeeting_Success_WithConnectionID(t *testing.T) {
 	w := httptest.NewRecorder()
 	p.router.ServeHTTP(w, req)
 
+	const expectedMeetURL = "https://meet.google.com/conn-tab-meet"
+
 	assert.Equal(t, http.StatusOK, w.Code)
+	var httpResp map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &httpResp)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", httpResp["status"])
+	assert.Equal(t, expectedMeetURL, httpResp["meeting_url"])
+
 	require.Len(t, api.wsPublished, 1)
+	assert.Equal(t, websocketEventMeetingStarted, api.wsPublished[0].event)
+	assert.Equal(t, expectedMeetURL, api.wsPublished[0].payload["meeting_url"])
 	require.NotNil(t, api.wsPublished[0].broadcast)
 	assert.Equal(t, "user1", api.wsPublished[0].broadcast.UserId)
 	assert.Equal(t, "ws-session-abc", api.wsPublished[0].broadcast.ConnectionId)
