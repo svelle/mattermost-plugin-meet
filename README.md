@@ -1,7 +1,7 @@
 # Mattermost Google Meet Plugin
 
 
-#### Warning: This plugin is not security reviewed or officially supported and should be considered experimental!
+#### Warning: This is a beta plugin and not covered by any kind of Mattermost Enterprise support entitlements!
 
 Start and join Google Meet meetings from Mattermost.
 
@@ -74,7 +74,7 @@ In Google Cloud:
 
 1. Enable the [Google Meet REST API](https://console.cloud.google.com/apis/library/meet.googleapis.com).
 2. Create an OAuth 2.0 Client ID of type `Web application`.
-3. Add the redirect URI shown in the plugin configuration page once the plugin is active.
+3. Add the redirect URI (`https://your-mattermost-server.com/plugins/com.mattermost.google-meet/api/v1/oauth/callback`).
 
 The plugin displays the expected redirect URI in the System Console plugin settings header after activation.
 
