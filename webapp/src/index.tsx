@@ -3,6 +3,7 @@ import manifest from 'manifest';
 import React from 'react';
 import type {Store} from 'redux';
 import {postEphemeralMessage} from 'utils/ephemeral';
+import {handleMeetingStarted} from 'websocket/meeting_started';
 
 import type {Channel} from '@mattermost/types/channels';
 import type {GlobalState} from '@mattermost/types/store';
@@ -33,6 +34,7 @@ export default class Plugin {
         registry.registerPostTypeComponent('custom_gmeet_transcript', PostTypeTranscript);
         registry.registerPostTypeComponent('custom_gmeet_recording', PostTypeRecording);
         registry.registerPostTypeComponent('custom_gmeet_smartnote', PostTypeSmartNote);
+        registry.registerWebSocketEventHandler(`custom_${manifest.id}_meeting_started`, handleMeetingStarted);
 
         if (!configured && !isAdmin) {
             return;
@@ -43,7 +45,8 @@ export default class Plugin {
             (channel: Channel) => {
                 const startMeeting = async () => {
                     try {
-                        const data = await createMeeting(channel.id);
+                        const connectionId = store.getState().websocket?.connectionId || '';
+                        const data = await createMeeting(channel.id, connectionId);
                         if (data.status !== 'ok' && data.status !== 'handled') {
                             const serverContext = data.message || data.error || data.reason;
                             const message = serverContext ?

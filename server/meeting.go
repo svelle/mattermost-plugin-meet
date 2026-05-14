@@ -13,31 +13,37 @@ import (
 	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
+const websocketEventMeetingStarted = "meeting_started"
+
 // ErrNoChannelPermission indicates the user cannot create posts in the channel.
 var ErrNoChannelPermission = errors.New("no permission to create posts in this channel")
 
-func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
+// StartMeeting creates a Google Meet space, posts to the channel, notifies the
+// starter's clients via WebSocket (for opening the join URL), and returns the meet URL.
+// connectionID, when non-empty, scopes the WebSocket event to that browser session only
+// (see mattermost-plugin-zoom PR #468 / MM-68481).
+func (p *Plugin) StartMeeting(userID, channelID, topic, connectionID string) (string, error) {
 	if !p.API.HasPermissionToChannel(userID, channelID, model.PermissionCreatePost) {
-		return ErrNoChannelPermission
+		return "", ErrNoChannelPermission
 	}
 
 	if p.getConfiguration().RestrictMeetingCreation {
 		channel, appErr := p.API.GetChannel(channelID)
 		if appErr != nil {
-			return fmt.Errorf("failed to get channel: %w", appErr)
+			return "", fmt.Errorf("failed to get channel: %w", appErr)
 		}
 		if channel.Type == model.ChannelTypeOpen {
-			return command.ErrPublicChannelRestricted
+			return "", command.ErrPublicChannelRestricted
 		}
 	}
 
 	p.API.LogDebug("StartMeeting: getting valid token", "user_id", userID)
 	token, err := p.getValidToken(userID)
 	if err != nil {
-		return fmt.Errorf("failed to get user token: %w", err)
+		return "", fmt.Errorf("failed to get user token: %w", err)
 	}
 	if token == nil {
-		return errors.New("user not connected to Google")
+		return "", errors.New("user not connected to Google")
 	}
 
 	p.API.LogDebug("StartMeeting: creating Google Meet meeting", "user_id", userID)
@@ -51,9 +57,9 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 			} else if delErr := store.DeleteOAuth2Token(userID); delErr != nil {
 				p.API.LogWarn("Failed to delete OAuth token after insufficient scopes", "user_id", userID, "error", delErr.Error())
 			}
-			return command.ErrNeedsReconnect
+			return "", command.ErrNeedsReconnect
 		}
-		return fmt.Errorf("failed to create Google Meet meeting: %w", err)
+		return "", fmt.Errorf("failed to create Google Meet meeting: %w", err)
 	}
 	p.API.LogDebug("StartMeeting: meeting created", "user_id", userID)
 
@@ -75,7 +81,7 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 
 	createdPost, appErr := p.API.CreatePost(post)
 	if appErr != nil {
-		return fmt.Errorf("failed to create post: %w", appErr)
+		return "", fmt.Errorf("failed to create post: %w", appErr)
 	}
 
 	// Store an ad-hoc mapping so the polling loop can post recording / transcript /
@@ -94,5 +100,13 @@ func (p *Plugin) StartMeeting(userID, channelID, topic string) error {
 		}
 	}
 
-	return nil
+	broadcast := &model.WebsocketBroadcast{UserId: userID}
+	if connectionID != "" {
+		broadcast.ConnectionId = connectionID
+	}
+	p.API.PublishWebSocketEvent(websocketEventMeetingStarted, map[string]any{
+		"meeting_url": meetURL,
+	}, broadcast)
+
+	return meetURL, nil
 }

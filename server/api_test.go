@@ -35,6 +35,13 @@ type mockPluginAPI struct {
 	hasPerm         bool
 	captureAllPosts bool
 	allPosts        []*model.Post
+	wsPublished     []mockWSPublish
+}
+
+type mockWSPublish struct {
+	event     string
+	payload   map[string]any
+	broadcast *model.WebsocketBroadcast
 }
 
 func (m *mockPluginAPI) GetConfig() *model.Config {
@@ -105,6 +112,14 @@ func (m *mockPluginAPI) KVSetWithOptions(key string, value []byte, options model
 
 func (m *mockPluginAPI) HasPermissionToChannel(userID, channelID string, permission *model.Permission) bool {
 	return m.hasPerm
+}
+
+func (m *mockPluginAPI) PublishWebSocketEvent(event string, payload map[string]any, broadcast *model.WebsocketBroadcast) {
+	m.wsPublished = append(m.wsPublished, mockWSPublish{
+		event:     event,
+		payload:   payload,
+		broadcast: broadcast,
+	})
 }
 
 // mockKVStore implements kvstore.KVStore for testing.
@@ -536,6 +551,7 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp["status"])
+	assert.Equal(t, "https://meet.google.com/test-meet", resp["meeting_url"])
 	assert.Empty(t, api.ephemeralPosts)
 
 	// Verify the post was created
@@ -543,6 +559,71 @@ func TestHandleCreateMeeting_Success(t *testing.T) {
 	assert.Equal(t, "chan1", api.post.ChannelId)
 	assert.Equal(t, "custom_google_meet", api.post.Type)
 	assert.Equal(t, "https://meet.google.com/test-meet", api.post.Props["meeting_link"])
+
+	require.Len(t, api.wsPublished, 1)
+	assert.Equal(t, websocketEventMeetingStarted, api.wsPublished[0].event)
+	assert.Equal(t, "https://meet.google.com/test-meet", api.wsPublished[0].payload["meeting_url"])
+	require.NotNil(t, api.wsPublished[0].broadcast)
+	assert.Equal(t, "user1", api.wsPublished[0].broadcast.UserId)
+	assert.Empty(t, api.wsPublished[0].broadcast.ConnectionId)
+}
+
+func TestHandleCreateMeeting_Success_WithConnectionID(t *testing.T) {
+	meetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		resp := meetSpaceResponse{
+			Name:        "spaces/test",
+			MeetingURI:  "https://meet.google.com/conn-tab-meet",
+			MeetingCode: "conn-tab-meet",
+		}
+		w.WriteHeader(http.StatusOK)
+		err := json.NewEncoder(w).Encode(resp)
+		require.NoError(t, err)
+	}))
+	defer meetServer.Close()
+
+	origURL := googleMeetURL
+	origClient := httpClient
+	googleMeetURL = meetServer.URL + "/v2"
+	httpClient = meetServer.Client()
+	defer func() {
+		googleMeetURL = origURL
+		httpClient = origClient
+	}()
+
+	p, api, kv := setupPlugin(t)
+	api.hasPerm = true
+
+	kv.tokens["user1"] = &kvstore.OAuth2Token{
+		AccessToken:  "valid-token",
+		TokenType:    "Bearer",
+		RefreshToken: "refresh",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"channel_id":    "chan1",
+		"connection_id": "ws-session-abc",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meeting", bytes.NewReader(body))
+	req.Header.Set("Mattermost-User-ID", "user1")
+	w := httptest.NewRecorder()
+	p.router.ServeHTTP(w, req)
+
+	const expectedMeetURL = "https://meet.google.com/conn-tab-meet"
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var httpResp map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &httpResp)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", httpResp["status"])
+	assert.Equal(t, expectedMeetURL, httpResp["meeting_url"])
+
+	require.Len(t, api.wsPublished, 1)
+	assert.Equal(t, websocketEventMeetingStarted, api.wsPublished[0].event)
+	assert.Equal(t, expectedMeetURL, api.wsPublished[0].payload["meeting_url"])
+	require.NotNil(t, api.wsPublished[0].broadcast)
+	assert.Equal(t, "user1", api.wsPublished[0].broadcast.UserId)
+	assert.Equal(t, "ws-session-abc", api.wsPublished[0].broadcast.ConnectionId)
 }
 
 func TestHandleCreateMeeting_NoChannelPermission(t *testing.T) {

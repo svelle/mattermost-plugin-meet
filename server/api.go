@@ -222,8 +222,9 @@ setTimeout(function() { window.close(); }, 3000);
 }
 
 type createMeetingRequest struct {
-	ChannelID string `json:"channel_id"`
-	Topic     string `json:"topic"`
+	ChannelID    string `json:"channel_id"`
+	Topic        string `json:"topic"`
+	ConnectionID string `json:"connection_id"`
 }
 
 func (p *Plugin) handleConfigStatus(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +304,8 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := p.StartMeeting(userID, req.ChannelID, req.Topic); err != nil {
+	meetURL, err := p.StartMeeting(userID, req.ChannelID, req.Topic, req.ConnectionID)
+	if err != nil {
 		if errors.Is(err, command.ErrNeedsReconnect) {
 			connectURL := p.GetConnectURL()
 			message := "Your Google account needs to be reconnected."
@@ -326,7 +328,10 @@ func (p *Plugin) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "ok"}, p.API)
+	writeJSONResponse(w, http.StatusOK, map[string]string{
+		"status":      "ok",
+		"meeting_url": meetURL,
+	}, p.API)
 }
 
 func generateState() (string, error) {
