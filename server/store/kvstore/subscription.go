@@ -107,44 +107,57 @@ func (kv *Client) ListUserSubscriptionSpaceIDs(userID string) ([]string, error) 
 	return ids, nil
 }
 
+// addToStringList appends value to the JSON-encoded list at key, retrying on
+// concurrent modification via the KV CAS API. Note: this is atomic per key only —
+// AddToUserSubscriptionIndex/RemoveFromUserSubscriptionIndex update two keys
+// sequentially, and the plugin KV API offers no multi-key transactions, so the
+// caller may briefly observe one index updated and not the other on a crash.
 func (kv *Client) addToStringList(key, value string) error {
-	var list []string
-	if err := kv.client.KV.Get(key, &list); err != nil {
-		return errors.Wrap(err, "failed to read existing list")
-	}
-	if slices.Contains(list, value) {
-		return nil
-	}
-	list = append(list, value)
-	data, err := json.Marshal(list)
+	err := kv.client.KV.SetAtomicWithRetries(key, func(oldValue []byte) (any, error) {
+		list, err := unmarshalStringList(oldValue)
+		if err != nil {
+			return nil, err
+		}
+		if slices.Contains(list, value) {
+			return list, nil
+		}
+		return append(list, value), nil
+	})
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal list")
-	}
-	if _, err := kv.client.KV.Set(key, data); err != nil {
-		return errors.Wrap(err, "failed to store list")
+		return errors.Wrap(err, "failed to atomically update list")
 	}
 	return nil
 }
 
 func (kv *Client) removeFromStringList(key, value string) error {
-	var list []string
-	if err := kv.client.KV.Get(key, &list); err != nil {
-		return errors.Wrap(err, "failed to read existing list")
-	}
-	filtered := list[:0]
-	for _, v := range list {
-		if v != value {
-			filtered = append(filtered, v)
+	err := kv.client.KV.SetAtomicWithRetries(key, func(oldValue []byte) (any, error) {
+		list, err := unmarshalStringList(oldValue)
+		if err != nil {
+			return nil, err
 		}
-	}
-	data, err := json.Marshal(filtered)
+		filtered := list[:0]
+		for _, v := range list {
+			if v != value {
+				filtered = append(filtered, v)
+			}
+		}
+		return filtered, nil
+	})
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal list")
-	}
-	if _, err := kv.client.KV.Set(key, data); err != nil {
-		return errors.Wrap(err, "failed to store list")
+		return errors.Wrap(err, "failed to atomically update list")
 	}
 	return nil
+}
+
+func unmarshalStringList(data []byte) ([]string, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var list []string
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal existing list")
+	}
+	return list, nil
 }
 
 func (kv *Client) StoreConferencePostState(conferenceRecordName string, state *ConferencePostState) error {

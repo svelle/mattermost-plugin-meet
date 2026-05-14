@@ -20,17 +20,24 @@ func (p *Plugin) startPoller() {
 		return
 	}
 
+	// Defensive: ensure any prior goroutine is stopped before starting a new one
+	// so back-to-back startPoller calls (or a missed stopPoller) don't leak.
+	p.stopPoller()
+
 	intervalSec := p.getConfiguration().pollInterval()
 	p.API.LogInfo("Starting Google Meet poller", "interval_seconds", intervalSec)
 
-	p.pollerStop = make(chan struct{})
+	// Capture the channel locally so the goroutine selects on its own channel
+	// even if p.pollerStop is later reassigned by another startPoller call.
+	stop := make(chan struct{})
+	p.pollerStop = stop
 	go func() {
 		interval := time.Duration(intervalSec) * time.Second
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-p.pollerStop:
+			case <-stop:
 				return
 			case <-ticker.C:
 				p.runPollCycle()
