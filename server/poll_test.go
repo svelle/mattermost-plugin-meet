@@ -208,14 +208,8 @@ func TestPollConferenceArtifacts_RecordingPostedOnce(t *testing.T) {
 	require.NoError(t, kv.StoreConferencePostState("conferenceRecords/rec1", state))
 
 	p := pollTestPlugin(t, api, kv)
-	sub := &kvstore.Subscription{
-		SpaceID:     "spaces/abc123",
-		MeetingCode: "abc-mnop-xyz",
-		ChannelID:   "chan1",
-		CreatedBy:   "user1",
-	}
 
-	done := p.pollConferenceArtifacts(kv, token, sub, "conferenceRecords/rec1")
+	done := p.pollConferenceArtifacts(kv, token, "conferenceRecords/rec1")
 	assert.False(t, done)
 
 	// Recording post should have been created.
@@ -233,7 +227,7 @@ func TestPollConferenceArtifacts_RecordingPostedOnce(t *testing.T) {
 
 	// Poll again — recording should NOT be posted again.
 	api.allPosts = nil
-	p.pollConferenceArtifacts(kv, token, sub, "conferenceRecords/rec1")
+	p.pollConferenceArtifacts(kv, token, "conferenceRecords/rec1")
 	assert.Empty(t, api.allPosts, "recording should not be posted twice")
 }
 

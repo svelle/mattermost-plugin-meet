@@ -169,7 +169,7 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 	// doesn't grow unbounded over the life of the subscription.
 	stillActive := sub.ActiveConferenceIDs[:0]
 	for _, confName := range sub.ActiveConferenceIDs {
-		if done := p.pollConferenceArtifacts(store, token, sub, confName); !done {
+		if done := p.pollConferenceArtifacts(store, token, confName); !done {
 			stillActive = append(stillActive, confName)
 		}
 	}
@@ -183,7 +183,7 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 
 // pollConferenceArtifacts checks a single conference record for new recordings/transcripts/smart notes.
 // Monitoring stops implicitly when the conference's KV state entry expires (TTL).
-func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.OAuth2Token, sub *kvstore.Subscription, confName string) bool {
+func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.OAuth2Token, confName string) bool {
 	state, err := store.GetConferencePostState(confName)
 	if err != nil {
 		p.API.LogWarn("Failed to get conference post state during artifact poll", "conference", confName, "error", err.Error())
@@ -327,11 +327,7 @@ func (p *Plugin) pollAdHocMeetings(store kvstore.KVStore) {
 				}
 			}
 
-			syntheticSub := &kvstore.Subscription{
-				SpaceID:   spaceID,
-				ChannelID: entry.ChannelID,
-			}
-			p.pollConferenceArtifacts(store, token, syntheticSub, record.Name)
+			p.pollConferenceArtifacts(store, token, record.Name)
 		}
 	}
 }
