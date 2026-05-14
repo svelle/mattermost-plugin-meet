@@ -33,10 +33,7 @@ func (p *Plugin) postConferenceStarted(sub *kvstore.Subscription, record *confer
 		startedAt = *record.StartTime
 	}
 
-	message := fmt.Sprintf("A new Google Meet conference has started in **%s**.", sub.MeetingCode)
-	if sub.Description != "" {
-		message += fmt.Sprintf(" _%s_", sub.Description)
-	}
+	message := "A new Google Meet conference has started."
 
 	post := &model.Post{
 		UserId:    p.botID,
@@ -46,6 +43,7 @@ func (p *Plugin) postConferenceStarted(sub *kvstore.Subscription, record *confer
 		Props: model.StringInterface{
 			"meeting_code":      sub.MeetingCode,
 			"space_id":          sub.SpaceID,
+			"description":       sub.Description,
 			"conference_record": record.Name,
 			"conference_start":  startedAt.UTC().Format(time.RFC3339),
 		},
