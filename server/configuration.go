@@ -12,11 +12,25 @@ import (
 	"github.com/mattermost/mattermost-plugin-google-meet/server/store/kvstore"
 )
 
+const (
+	defaultPollIntervalSeconds = 60
+	minPollIntervalSeconds     = 30
+)
+
 type configuration struct {
-	GoogleClientID          string `json:"GoogleClientID"`
-	GoogleClientSecret      string `json:"GoogleClientSecret"`
-	EncryptionKey           string `json:"EncryptionKey"`
-	RestrictMeetingCreation bool   `json:"RestrictMeetingCreation"`
+	GoogleClientID                string `json:"GoogleClientID"`
+	GoogleClientSecret            string `json:"GoogleClientSecret"`
+	EncryptionKey                 string `json:"EncryptionKey"`
+	RestrictMeetingCreation       bool   `json:"RestrictMeetingCreation"`
+	EnableConferenceArtifactPosts bool   `json:"EnableConferenceArtifactPosts"`
+	PollIntervalSeconds           int    `json:"PollIntervalSeconds"`
+}
+
+func (c *configuration) pollInterval() int {
+	if c.PollIntervalSeconds < minPollIntervalSeconds {
+		return defaultPollIntervalSeconds
+	}
+	return c.PollIntervalSeconds
 }
 
 func (c *configuration) Clone() *configuration {
@@ -77,6 +91,9 @@ func (p *Plugin) OnConfigurationChange() error {
 		} else {
 			p.setKVStore(nil)
 		}
+		// Restart the poller with the potentially updated interval/enabled flag.
+		p.stopPoller()
+		p.startPoller()
 	}
 	p.updateSettingsHeader()
 
@@ -85,6 +102,10 @@ func (p *Plugin) OnConfigurationChange() error {
 
 func (p *Plugin) IsPluginConfigured() bool {
 	return p.pluginReadinessError() == nil
+}
+
+func (p *Plugin) AreSubscriptionsEnabled() bool {
+	return p.getConfiguration().EnableConferenceArtifactPosts
 }
 
 func (p *Plugin) GetPluginConfigureURL() string {
