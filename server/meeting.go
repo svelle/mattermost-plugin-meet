@@ -6,6 +6,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 
@@ -92,6 +93,7 @@ func (p *Plugin) StartMeeting(userID, channelID, topic, connectionID string) (st
 			RootPostID: createdPost.Id,
 			ChannelID:  channelID,
 			UserID:     userID,
+			CreatedAt:  time.Now().UTC(),
 		}
 		if storeErr := kvStore.StoreAdHocMeetingPost(spaceName, entry); storeErr != nil {
 			p.API.LogWarn("StartMeeting: failed to store ad-hoc meeting post", "space", spaceName, "error", storeErr.Error())

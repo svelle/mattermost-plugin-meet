@@ -70,6 +70,10 @@ func (p *Plugin) AdminAuthorizationRequired(next http.Handler) http.Handler {
 }
 
 func (p *Plugin) handlePollNow(w http.ResponseWriter, _ *http.Request) {
+	if !p.getConfiguration().EnableConferenceArtifactPosts {
+		writeJSONResponse(w, http.StatusOK, map[string]string{"status": "feature_disabled"}, p.API)
+		return
+	}
 	go p.runPollCycle()
 	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "poll triggered"}, p.API)
 }

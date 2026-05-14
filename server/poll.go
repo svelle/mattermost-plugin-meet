@@ -4,6 +4,7 @@
 package main
 
 import (
+	"slices"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/pluginapi/cluster"
@@ -48,7 +49,13 @@ func (p *Plugin) stopPoller() {
 
 // runPollCycle is the work done on each tick. It acquires a distributed mutex
 // so that only one node in an HA cluster processes subscriptions at a time.
+// The EnableConferenceArtifactPosts guard is duplicated here (the goroutine in
+// startPoller is already gated) to keep any future caller from bypassing it.
 func (p *Plugin) runPollCycle() {
+	if !p.getConfiguration().EnableConferenceArtifactPosts {
+		return
+	}
+
 	mutex, err := cluster.NewMutex(p.API, "com.mattermost.google-meet.poll")
 	if err != nil {
 		p.API.LogError("Failed to create polling mutex", "error", err.Error())
@@ -110,31 +117,40 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 			p.API.LogWarn("Failed to get conference post state", "conference", record.Name, "error", err.Error())
 			continue
 		}
-		if state != nil {
-			continue
+
+		if state == nil {
+			postID, err := p.postConferenceStarted(sub, record)
+			if err != nil {
+				p.API.LogWarn("Failed to post conference started", "conference", record.Name, "error", err.Error())
+				continue
+			}
+			p.API.LogInfo("Posted new Google Meet conference notification", "conference", record.Name, "space_id", sub.SpaceID, "channel_id", sub.ChannelID, "root_post_id", postID)
+			state = &kvstore.ConferencePostState{
+				RootPostID: postID,
+				ChannelID:  sub.ChannelID,
+			}
+			if err := store.StoreConferencePostState(record.Name, state); err != nil {
+				p.API.LogWarn("Failed to store conference post state", "conference", record.Name, "error", err.Error())
+			}
 		}
 
-		postID, err := p.postConferenceStarted(sub, record)
-		if err != nil {
-			p.API.LogWarn("Failed to post conference started", "conference", record.Name, "error", err.Error())
-			continue
-		}
-		p.API.LogInfo("Posted new Google Meet conference notification", "conference", record.Name, "space_id", sub.SpaceID, "channel_id", sub.ChannelID, "root_post_id", postID)
-		state = &kvstore.ConferencePostState{
-			RootPostID: postID,
-			ChannelID:  sub.ChannelID,
-		}
-		if err := store.StoreConferencePostState(record.Name, state); err != nil {
-			p.API.LogWarn("Failed to store conference post state", "conference", record.Name, "error", err.Error())
-		}
-
-		// Advance the high-water mark so future polls skip this record.
+		// Always advance subscription tracking — even when state already exists —
+		// so that a prior failure to persist the subscription (after the post
+		// succeeded) doesn't leave the record stranded outside ActiveConferenceIDs
+		// or block the high-water mark from advancing on subsequent polls.
+		subChanged := false
 		if record.StartTime != nil && record.StartTime.After(sub.LastSeenConferenceStart) {
 			sub.LastSeenConferenceStart = *record.StartTime
+			subChanged = true
 		}
-		sub.ActiveConferenceIDs = appendIfMissing(sub.ActiveConferenceIDs, record.Name)
-		if err := store.StoreSubscription(sub); err != nil {
-			p.API.LogWarn("Failed to update subscription state", "space_id", sub.SpaceID, "error", err.Error())
+		if !slices.Contains(sub.ActiveConferenceIDs, record.Name) {
+			sub.ActiveConferenceIDs = append(sub.ActiveConferenceIDs, record.Name)
+			subChanged = true
+		}
+		if subChanged {
+			if err := store.StoreSubscription(sub); err != nil {
+				p.API.LogWarn("Failed to update subscription state", "space_id", sub.SpaceID, "error", err.Error())
+			}
 		}
 	}
 
@@ -142,8 +158,19 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 		return
 	}
 
+	// Prune conferences whose post-state has expired (TTL) so ActiveConferenceIDs
+	// doesn't grow unbounded over the life of the subscription.
+	stillActive := sub.ActiveConferenceIDs[:0]
 	for _, confName := range sub.ActiveConferenceIDs {
-		p.pollConferenceArtifacts(store, token, sub, confName)
+		if done := p.pollConferenceArtifacts(store, token, sub, confName); !done {
+			stillActive = append(stillActive, confName)
+		}
+	}
+	if len(stillActive) != len(sub.ActiveConferenceIDs) {
+		sub.ActiveConferenceIDs = stillActive
+		if err := store.StoreSubscription(sub); err != nil {
+			p.API.LogWarn("Failed to persist pruned subscription state", "space_id", sub.SpaceID, "error", err.Error())
+		}
 	}
 }
 
@@ -170,10 +197,10 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 		if rec.State != meetStateFileGenerated {
 			continue
 		}
-		if containsString(state.PostedRecordingIDs, rec.Name) {
+		if slices.Contains(state.PostedRecordingIDs, rec.Name) {
 			continue
 		}
-		if err := p.postRecording(state.ChannelID, state.RootPostID, rec); err != nil {
+		if err = p.postRecording(state.ChannelID, state.RootPostID, rec); err != nil {
 			p.API.LogWarn("Failed to post recording", "recording", rec.Name, "error", err.Error())
 			continue
 		}
@@ -191,10 +218,10 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 		if tr.State != meetStateFileGenerated {
 			continue
 		}
-		if containsString(state.PostedTranscriptIDs, tr.Name) {
+		if slices.Contains(state.PostedTranscriptIDs, tr.Name) {
 			continue
 		}
-		if err := p.postTranscript(token, state.ChannelID, state.RootPostID, tr); err != nil {
+		if err = p.postTranscript(token, state.ChannelID, state.RootPostID, tr); err != nil {
 			p.API.LogWarn("Failed to post transcript", "transcript", tr.Name, "error", err.Error())
 			continue
 		}
@@ -212,10 +239,10 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 		if sn.State != meetStateFileGenerated {
 			continue
 		}
-		if containsString(state.PostedSmartNoteIDs, sn.Name) {
+		if slices.Contains(state.PostedSmartNoteIDs, sn.Name) {
 			continue
 		}
-		if err := p.postSmartNote(state.ChannelID, state.RootPostID, sn); err != nil {
+		if err = p.postSmartNote(state.ChannelID, state.RootPostID, sn); err != nil {
 			p.API.LogWarn("Failed to post smart note", "smart_note", sn.Name, "error", err.Error())
 			continue
 		}
@@ -251,7 +278,7 @@ func (p *Plugin) pollAdHocMeetings(store kvstore.KVStore) {
 			continue
 		}
 		if entry == nil {
-			if err := store.RemoveFromAdHocIndex(spaceID); err != nil {
+			if err = store.RemoveFromAdHocIndex(spaceID); err != nil {
 				p.API.LogWarn("Failed to remove expired ad-hoc entry from index", "space_id", spaceID, "error", err.Error())
 			}
 			continue
@@ -267,7 +294,7 @@ func (p *Plugin) pollAdHocMeetings(store kvstore.KVStore) {
 			continue
 		}
 
-		records, err := p.listConferenceRecords(token, spaceID, time.Time{})
+		records, err := p.listConferenceRecords(token, spaceID, entry.CreatedAt)
 		if err != nil {
 			p.API.LogWarn("Failed to list conference records for ad-hoc space", "space_id", spaceID, "error", err.Error())
 			continue
@@ -300,22 +327,4 @@ func (p *Plugin) pollAdHocMeetings(store kvstore.KVStore) {
 			p.pollConferenceArtifacts(store, token, syntheticSub, record.Name)
 		}
 	}
-}
-
-func appendIfMissing(slice []string, s string) []string {
-	for _, v := range slice {
-		if v == s {
-			return slice
-		}
-	}
-	return append(slice, s)
-}
-
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

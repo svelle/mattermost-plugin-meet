@@ -42,8 +42,8 @@ func TestPollSubscription_NewConferenceCreatesPost(t *testing.T) {
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/v2/conferenceRecords":
+		switch r.URL.Path {
+		case "/v2/conferenceRecords":
 			w.WriteHeader(http.StatusOK)
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 				"conferenceRecords": []conferenceRecord{
@@ -160,8 +160,8 @@ func TestPollConferenceArtifacts_RecordingPostedOnce(t *testing.T) {
 
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/v2/conferenceRecords/rec1/recordings":
+		switch r.URL.Path {
+		case "/v2/conferenceRecords/rec1/recordings":
 			callCount++
 			w.WriteHeader(http.StatusOK)
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
@@ -173,10 +173,10 @@ func TestPollConferenceArtifacts_RecordingPostedOnce(t *testing.T) {
 					},
 				},
 			}))
-		case r.URL.Path == "/v2/conferenceRecords/rec1/transcripts":
+		case "/v2/conferenceRecords/rec1/transcripts":
 			w.WriteHeader(http.StatusOK)
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"transcripts": []meetTranscript{}}))
-		case r.URL.Path == "/v2/conferenceRecords/rec1/smartNotes":
+		case "/v2/conferenceRecords/rec1/smartNotes":
 			w.WriteHeader(http.StatusOK)
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"smartNotes": []meetSmartNote{}}))
 		default:
@@ -264,20 +264,20 @@ func TestPollAdHocMeetings_TranscriptPostedAsReply(t *testing.T) {
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/v2/conferenceRecords":
+		switch r.URL.Path {
+		case "/v2/conferenceRecords":
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 				"conferenceRecords": []conferenceRecord{
 					{Name: "conferenceRecords/rec1", StartTime: &now},
 				},
 			}))
-		case r.URL.Path == "/v2/conferenceRecords/rec1/transcripts":
+		case "/v2/conferenceRecords/rec1/transcripts":
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 				"transcripts": []meetTranscript{
 					{Name: "conferenceRecords/rec1/transcripts/t1", State: meetStateFileGenerated},
 				},
 			}))
-		case r.URL.Path == "/v2/conferenceRecords/rec1/transcripts/t1/entries":
+		case "/v2/conferenceRecords/rec1/transcripts/t1/entries":
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 				"transcriptEntries": []transcriptEntry{
 					{Name: "conferenceRecords/rec1/transcripts/t1/entries/e1", Text: "Hello world", StartTime: now},

@@ -6,6 +6,7 @@ package kvstore
 import (
 	"encoding/json"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/pluginapi"
@@ -111,10 +112,8 @@ func (kv *Client) addToStringList(key, value string) error {
 	if err := kv.client.KV.Get(key, &list); err != nil {
 		return errors.Wrap(err, "failed to read existing list")
 	}
-	for _, v := range list {
-		if v == value {
-			return nil
-		}
+	if slices.Contains(list, value) {
+		return nil
 	}
 	list = append(list, value)
 	data, err := json.Marshal(list)
@@ -209,7 +208,10 @@ func (kv *Client) GetAdHocMeetingPost(spaceID string) (*AdHocMeetingPost, error)
 }
 
 func (kv *Client) DeleteAdHocMeetingPost(spaceID string) error {
-	return kv.client.KV.Delete(adHocKey(spaceID))
+	if err := kv.client.KV.Delete(adHocKey(spaceID)); err != nil {
+		return errors.Wrapf(err, "failed to delete ad-hoc meeting post for space %q", spaceID)
+	}
+	return nil
 }
 
 func (kv *Client) ListAdHocSpaceIDs() ([]string, error) {

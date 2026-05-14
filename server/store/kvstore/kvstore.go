@@ -49,9 +49,10 @@ type ConferencePostState struct {
 // It binds the meeting space to the Mattermost post and channel so the polling loop
 // can post recording/transcript/smart-note artifacts without an explicit subscription.
 type AdHocMeetingPost struct {
-	RootPostID string `json:"root_post_id"`
-	ChannelID  string `json:"channel_id"`
-	UserID     string `json:"user_id"` // used to obtain the OAuth token for Meet API calls
+	RootPostID string    `json:"root_post_id"`
+	ChannelID  string    `json:"channel_id"`
+	UserID     string    `json:"user_id"` // used to obtain the OAuth token for Meet API calls
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type KVStore interface {

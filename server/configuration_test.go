@@ -17,7 +17,7 @@ func TestConfiguration_PollInterval(t *testing.T) {
 	}{
 		{"unset falls back to default", 0, defaultPollIntervalSeconds},
 		{"negative falls back to default", -10, defaultPollIntervalSeconds},
-		{"below minimum falls back to default", minPollIntervalSeconds - 1, defaultPollIntervalSeconds},
+		{"positive below minimum is clamped to minimum", minPollIntervalSeconds - 1, minPollIntervalSeconds},
 		{"exact minimum is honoured", minPollIntervalSeconds, minPollIntervalSeconds},
 		{"larger value is honoured", 300, 300},
 	}

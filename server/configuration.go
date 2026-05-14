@@ -27,8 +27,14 @@ type configuration struct {
 }
 
 func (c *configuration) pollInterval() int {
-	if c.PollIntervalSeconds < minPollIntervalSeconds {
+	// Non-positive values are treated as "unset" and get the default. Positive
+	// values below the floor are clamped to minPollIntervalSeconds so admin
+	// intent isn't silently inflated (e.g. 25 -> 30, not 60).
+	if c.PollIntervalSeconds <= 0 {
 		return defaultPollIntervalSeconds
+	}
+	if c.PollIntervalSeconds < minPollIntervalSeconds {
+		return minPollIntervalSeconds
 	}
 	return c.PollIntervalSeconds
 }

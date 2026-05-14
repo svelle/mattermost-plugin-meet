@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -218,19 +219,12 @@ func (m *mockKVStore) ListAllSubscriptionSpaceIDs() ([]string, error) {
 }
 
 func (m *mockKVStore) AddToUserSubscriptionIndex(userID, spaceID string) error {
-	for _, id := range m.subscriptionIndex {
-		if id == spaceID {
-			goto addUser
-		}
+	if !slices.Contains(m.subscriptionIndex, spaceID) {
+		m.subscriptionIndex = append(m.subscriptionIndex, spaceID)
 	}
-	m.subscriptionIndex = append(m.subscriptionIndex, spaceID)
-addUser:
-	for _, id := range m.userSubIndex[userID] {
-		if id == spaceID {
-			return nil
-		}
+	if !slices.Contains(m.userSubIndex[userID], spaceID) {
+		m.userSubIndex[userID] = append(m.userSubIndex[userID], spaceID)
 	}
-	m.userSubIndex[userID] = append(m.userSubIndex[userID], spaceID)
 	return nil
 }
 
@@ -284,12 +278,9 @@ func (m *mockKVStore) ListAdHocSpaceIDs() ([]string, error) {
 }
 
 func (m *mockKVStore) AddToAdHocIndex(spaceID string) error {
-	for _, id := range m.adHocIndex {
-		if id == spaceID {
-			return nil
-		}
+	if !slices.Contains(m.adHocIndex, spaceID) {
+		m.adHocIndex = append(m.adHocIndex, spaceID)
 	}
-	m.adHocIndex = append(m.adHocIndex, spaceID)
 	return nil
 }
 
