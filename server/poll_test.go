@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -192,10 +191,7 @@ func TestPollConferenceArtifacts_RecordingPostedOnce(t *testing.T) {
 	httpClient = server.Client()
 	defer func() { googleMeetURL = origURL; httpClient = origClient }()
 
-	var createdPosts []*model.Post
 	api := &mockPluginAPI{siteURL: "http://localhost:8065"}
-	origCreate := api.postCreate
-	_ = origCreate
 	api.captureAllPosts = true
 
 	kv := newMockKVStore()
@@ -218,7 +214,6 @@ func TestPollConferenceArtifacts_RecordingPostedOnce(t *testing.T) {
 	assert.Equal(t, postTypeRecording, recPost.Type)
 	assert.Equal(t, "root-post-id", recPost.RootId)
 	assert.Equal(t, "chan1", recPost.ChannelId)
-	_ = createdPosts
 
 	// Verify state was updated with the posted recording ID.
 	updatedState, err := kv.GetConferencePostState("conferenceRecords/rec1")

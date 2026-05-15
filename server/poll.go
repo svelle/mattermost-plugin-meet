@@ -101,6 +101,12 @@ func (p *Plugin) runPollCycle() {
 
 // pollSubscription handles one subscription: finds new conferences and checks active ones for artifacts.
 func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscription) {
+	// Defense in depth: bail early if the admin disabled the feature mid-cycle
+	// so we don't create new conference-started posts after the kill switch.
+	if !p.getConfiguration().EnableConferenceArtifactPosts {
+		return
+	}
+
 	token, err := p.getValidToken(sub.CreatedBy)
 	if err != nil {
 		p.API.LogWarn("Skipping subscription poll: token lookup failed", "space_id", sub.SpaceID, "created_by", sub.CreatedBy, "error", err.Error())
@@ -117,11 +123,22 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 		records = nil
 	}
 
+	// Buffer the high-water mark advance until the entire batch succeeds.
+	// Advancing eagerly per-record would skip past a failed record whenever a
+	// later (newer) record in the same batch succeeded — the failed one is
+	// older than the new LastSeen and would never be re-fetched. Successful
+	// records still get added to ActiveConferenceIDs so their artifacts are
+	// polled even on partial-batch failure.
+	hadFailure := false
+	candidateLastSeen := sub.LastSeenConferenceStart
+	subChanged := false
+
 	for i := range records {
 		record := &records[i]
 		state, err := store.GetConferencePostState(record.Name)
 		if err != nil {
 			p.API.LogWarn("Failed to get conference post state", "conference", record.Name, "error", err.Error())
+			hadFailure = true
 			continue
 		}
 
@@ -129,6 +146,7 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 			postID, err := p.postConferenceStarted(sub, record)
 			if err != nil {
 				p.API.LogWarn("Failed to post conference started", "conference", record.Name, "error", err.Error())
+				hadFailure = true
 				continue
 			}
 			p.API.LogInfo("Posted new Google Meet conference notification", "conference", record.Name, "space_id", sub.SpaceID, "channel_id", sub.ChannelID, "root_post_id", postID)
@@ -138,32 +156,28 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 			}
 			if err := store.StoreConferencePostState(record.Name, state); err != nil {
 				p.API.LogWarn("Failed to store conference post state; will retry on next poll", "conference", record.Name, "error", err.Error())
+				hadFailure = true
 				continue
 			}
 		}
 
-		// Always advance subscription tracking — even when state already exists —
-		// so that a prior failure to persist the subscription (after the post
-		// succeeded) doesn't leave the record stranded outside ActiveConferenceIDs
-		// or block the high-water mark from advancing on subsequent polls.
-		subChanged := false
-		if record.StartTime != nil && record.StartTime.After(sub.LastSeenConferenceStart) {
-			sub.LastSeenConferenceStart = *record.StartTime
-			subChanged = true
+		if record.StartTime != nil && record.StartTime.After(candidateLastSeen) {
+			candidateLastSeen = *record.StartTime
 		}
 		if !slices.Contains(sub.ActiveConferenceIDs, record.Name) {
 			sub.ActiveConferenceIDs = append(sub.ActiveConferenceIDs, record.Name)
 			subChanged = true
 		}
-		if subChanged {
-			if err := store.StoreSubscription(sub); err != nil {
-				p.API.LogWarn("Failed to update subscription state", "space_id", sub.SpaceID, "error", err.Error())
-			}
-		}
 	}
 
-	if !p.getConfiguration().EnableConferenceArtifactPosts {
-		return
+	if !hadFailure && candidateLastSeen.After(sub.LastSeenConferenceStart) {
+		sub.LastSeenConferenceStart = candidateLastSeen
+		subChanged = true
+	}
+	if subChanged {
+		if err := store.StoreSubscription(sub); err != nil {
+			p.API.LogWarn("Failed to update subscription state", "space_id", sub.SpaceID, "error", err.Error())
+		}
 	}
 
 	// Prune conferences whose post-state has expired (TTL) so ActiveConferenceIDs
@@ -196,7 +210,15 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 		return true
 	}
 
-	changed := false
+	// Persist state right after each successful post so a single end-of-call
+	// KV failure can only re-post one artifact next cycle, not the whole batch.
+	// At-least-once: a transient KV failure produces a duplicate Drive/Docs link
+	// (visible, recoverable) rather than a silently-dropped artifact.
+	persistState := func() {
+		if persistErr := store.StoreConferencePostState(confName, state); persistErr != nil {
+			p.API.LogWarn("Failed to persist conference post state; artifact may be reposted on retry", "conference", confName, "error", persistErr.Error())
+		}
+	}
 
 	recordings, err := p.listRecordings(token, confName)
 	if err != nil {
@@ -216,7 +238,7 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 		}
 		p.API.LogInfo("Posted recording to thread", "recording", rec.Name, "conference", confName, "root_post_id", state.RootPostID)
 		state.PostedRecordingIDs = append(state.PostedRecordingIDs, rec.Name)
-		changed = true
+		persistState()
 	}
 
 	transcripts, err := p.listTranscripts(token, confName)
@@ -237,7 +259,7 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 		}
 		p.API.LogInfo("Posted transcript to thread", "transcript", tr.Name, "conference", confName, "root_post_id", state.RootPostID)
 		state.PostedTranscriptIDs = append(state.PostedTranscriptIDs, tr.Name)
-		changed = true
+		persistState()
 	}
 
 	smartNotes, err := p.listSmartNotes(token, confName)
@@ -258,13 +280,7 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 		}
 		p.API.LogInfo("Posted smart note to thread", "smart_note", sn.Name, "conference", confName, "root_post_id", state.RootPostID)
 		state.PostedSmartNoteIDs = append(state.PostedSmartNoteIDs, sn.Name)
-		changed = true
-	}
-
-	if changed {
-		if err := store.StoreConferencePostState(confName, state); err != nil {
-			p.API.LogWarn("Failed to update conference post state", "conference", confName, "error", err.Error())
-		}
+		persistState()
 	}
 
 	return false
@@ -275,6 +291,11 @@ func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.O
 // the root, so there is no need to create a conference-started post — we reuse the one
 // created by StartMeeting.
 func (p *Plugin) pollAdHocMeetings(store kvstore.KVStore) {
+	// Defense in depth: bail early if the admin disabled the feature mid-cycle.
+	if !p.getConfiguration().EnableConferenceArtifactPosts {
+		return
+	}
+
 	spaceIDs, err := store.ListAdHocSpaceIDs()
 	if err != nil {
 		p.API.LogError("Failed to list ad-hoc space IDs during poll", "error", err.Error())

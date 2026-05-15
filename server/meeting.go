@@ -87,6 +87,10 @@ func (p *Plugin) StartMeeting(userID, channelID, topic, connectionID string) (st
 
 	// Store an ad-hoc mapping so the polling loop can post recording / transcript /
 	// smart-note artifacts as replies to this post without an explicit subscription.
+	// Add to the index FIRST so a partial failure (index OK, entry missing) lands
+	// in pollAdHocMeetings' self-heal path which removes orphaned index entries.
+	// The reverse order would orphan a stored entry for its 24h TTL because
+	// the poller wouldn't know to look at it.
 	if spaceName != "" {
 		kvStore := p.getKVStore()
 		entry := &kvstore.AdHocMeetingPost{
@@ -95,10 +99,10 @@ func (p *Plugin) StartMeeting(userID, channelID, topic, connectionID string) (st
 			UserID:     userID,
 			CreatedAt:  time.Now().UTC(),
 		}
-		if storeErr := kvStore.StoreAdHocMeetingPost(spaceName, entry); storeErr != nil {
-			p.API.LogWarn("StartMeeting: failed to store ad-hoc meeting post", "space", spaceName, "error", storeErr.Error())
-		} else if storeErr := kvStore.AddToAdHocIndex(spaceName); storeErr != nil {
+		if storeErr := kvStore.AddToAdHocIndex(spaceName); storeErr != nil {
 			p.API.LogWarn("StartMeeting: failed to add to ad-hoc index", "space", spaceName, "error", storeErr.Error())
+		} else if storeErr := kvStore.StoreAdHocMeetingPost(spaceName, entry); storeErr != nil {
+			p.API.LogWarn("StartMeeting: failed to store ad-hoc meeting post", "space", spaceName, "error", storeErr.Error())
 		}
 	}
 
