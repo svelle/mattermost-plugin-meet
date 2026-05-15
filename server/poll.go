@@ -137,7 +137,8 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 				ChannelID:  sub.ChannelID,
 			}
 			if err := store.StoreConferencePostState(record.Name, state); err != nil {
-				p.API.LogWarn("Failed to store conference post state", "conference", record.Name, "error", err.Error())
+				p.API.LogWarn("Failed to store conference post state; will retry on next poll", "conference", record.Name, "error", err.Error())
+				continue
 			}
 		}
 
@@ -182,12 +183,14 @@ func (p *Plugin) pollSubscription(store kvstore.KVStore, sub *kvstore.Subscripti
 }
 
 // pollConferenceArtifacts checks a single conference record for new recordings/transcripts/smart notes.
-// Monitoring stops implicitly when the conference's KV state entry expires (TTL).
+// Returns true only when the conference's KV state entry is missing (TTL expired), signalling
+// that the caller should prune it from ActiveConferenceIDs. Transient read errors return false
+// so a flaky KV doesn't silently stop monitoring an in-progress conference.
 func (p *Plugin) pollConferenceArtifacts(store kvstore.KVStore, token *kvstore.OAuth2Token, confName string) bool {
 	state, err := store.GetConferencePostState(confName)
 	if err != nil {
-		p.API.LogWarn("Failed to get conference post state during artifact poll", "conference", confName, "error", err.Error())
-		return true
+		p.API.LogWarn("Failed to get conference post state during artifact poll; will retry", "conference", confName, "error", err.Error())
+		return false
 	}
 	if state == nil {
 		return true
